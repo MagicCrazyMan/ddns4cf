@@ -1,4 +1,4 @@
-use std::{env, fs, path::Path};
+use std::{env, fs, net::IpAddr, path::Path};
 
 use reqwest::Url;
 use serde::{
@@ -31,7 +31,7 @@ pub enum IpSourceType {
 impl IpSourceType {
     fn to_ip_source(&self) -> Box<dyn IpSource> {
         match self {
-            IpSourceType::IpIp => Box::new(IpIp),
+            IpSourceType::IpIp => Box::new(IpIp::new()),
             IpSourceType::Standalone(socket_addr) => Box::new(Standalone::new(socket_addr.clone())),
         }
     }
@@ -111,6 +111,8 @@ impl<'de> Deserialize<'de> for IpSourceType {
 /// 包含全局参数及需要刷新的域名列表。
 #[derive(serde_derive::Deserialize, Debug)]
 pub struct Configuration {
+    /// 绑定的本地 IP 地址，可选
+    bind_address: Option<IpAddr>,
     /// 全局刷新间隔，单位秒。默认为 900 秒。
     ///
     /// 若通过 [`Domain`] 为单独的域名设置 `fresh_interval` 属性，该属性将不会被使用。
@@ -129,6 +131,11 @@ pub struct Configuration {
 }
 
 impl Configuration {
+    /// 获取绑定的本地 IP 地址
+    pub fn bind_address(&self) -> Option<IpAddr> {
+        self.bind_address
+    }
+
     /// 获取全局刷新间隔，单位秒。默认为 900 秒。
     pub fn fresh_interval(&self) -> u64 {
         self.fresh_interval
@@ -151,6 +158,7 @@ impl Configuration {
         self.accounts().iter().for_each(|account| {
             account.domains().iter().for_each(|domain| {
                 let updater = Updater::new(
+                    domain.bind_address().or(self.bind_address()),
                     domain
                         .ip_source()
                         .unwrap_or(self.ip_source_type())
@@ -201,6 +209,8 @@ impl Account {
 /// Cloudflare 域名数据
 #[derive(serde_derive::Deserialize, Debug)]
 pub struct Domain {
+    /// 绑定的本地 IP 地址，可选
+    bind_address: Option<IpAddr>,
     /// 刷新间隔，单位秒。
     ///
     /// 若未配置该项，则会使用 [`Configuration`] 中 `fresh_interval` 属性。
@@ -225,6 +235,11 @@ pub struct Domain {
 }
 
 impl Domain {
+    /// 获取绑定的本地 IP 地址
+    pub fn bind_address(&self) -> Option<IpAddr> {
+        self.bind_address
+    }
+
     /// 获取刷新间隔，单位秒。
     pub fn fresh_interval(&self) -> Option<u64> {
         self.fresh_interval

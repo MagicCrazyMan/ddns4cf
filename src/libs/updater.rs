@@ -54,6 +54,7 @@ struct CloudflareUpdateDNSBody<'a> {
 /// Cloudflare 域名更新器，所有更新相关的操作均由该结构负责完成。
 #[derive(Debug)]
 pub struct Updater {
+    bind_address: Option<IpAddr>,
     refresh_interval: u64,
     retry_interval: u64,
     nickname: String,
@@ -67,6 +68,7 @@ pub struct Updater {
 impl Updater {
     /// 创建新更新器
     pub fn new(
+        bind_address: Option<IpAddr>,
         ip_source: Box<dyn IpSource>,
         nickname: &str,
         token: &str,
@@ -76,6 +78,7 @@ impl Updater {
         retry_interval: u64,
     ) -> Self {
         Self {
+            bind_address,
             ip_source,
             nickname: nickname.to_string(),
             token: token.to_string(),
@@ -89,6 +92,9 @@ impl Updater {
 
     /// 启动循环更新
     pub async fn start(&mut self) {
+        if let Some(bind_address) = self.bind_address {
+            info!("[{}] 正在使用手动绑定的本地地址：{}", self.nickname, bind_address);
+        } 
         info!("[{}] 加载中...", self.nickname);
         self.prepare().await;
         info!("[{}] 加载完毕", self.nickname);
@@ -138,7 +144,7 @@ impl Updater {
     async fn update(&mut self) -> StringifyResult<String> {
         let old_details = self.details.as_ref().unwrap();
 
-        let new_ip = self.ip_source.ip().await?;
+        let new_ip = self.ip_source.ip(self.bind_address).await?;
         if new_ip == old_details.content {
             Ok(format!("IP 地址未发生变化，当前地址为：{}", new_ip))
         } else {
@@ -156,7 +162,9 @@ impl Updater {
     /// 尝试获取 Cloudflare DNS 记录详情
     async fn retrieve_dns_details(&self) -> StringifyResult<CloudflareRecordDetails> {
         // 访问 Cloudflare 获取当前 DNS 记录配置
-        let text = reqwest::Client::new()
+        let text = reqwest::ClientBuilder::new()
+            .local_address(self.bind_address)
+            .build()?
             .get(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
                 self.zone_id, self.id
@@ -202,7 +210,9 @@ impl Updater {
             proxied: details.proxied,
         };
 
-        let text = reqwest::Client::new()
+        let text = reqwest::ClientBuilder::new()
+            .local_address(self.bind_address)
+            .build()?
             .put(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
                 self.zone_id, self.id

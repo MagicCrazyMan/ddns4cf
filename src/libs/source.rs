@@ -9,7 +9,7 @@ use super::error::{StringifyError, StringifyResult};
 #[async_trait]
 pub trait IpSource: Debug + Send + Sync {
     /// 获取当前运行机器所处于的 ip 地址
-    async fn ip(&self) -> StringifyResult<IpAddr>;
+    async fn ip(&self, bind_address: Option<IpAddr>) -> StringifyResult<IpAddr>;
 }
 
 /// 从 IpIp 获取当前运行机器所处于的 ip 地址
@@ -17,8 +17,14 @@ pub trait IpSource: Debug + Send + Sync {
 pub struct IpIp;
 
 impl IpIp {
-    async fn send_request(&self) -> Result<String, reqwest::Error> {
-        let client = reqwest::ClientBuilder::new().user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36").build()?;
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl IpIp {
+    async fn send_request(&self, bind_address: Option<IpAddr>) -> Result<String, reqwest::Error> {
+        let client = reqwest::ClientBuilder::new().local_address(bind_address).user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36").build()?;
         let html = client
             .get("https://www.ipip.net/")
             .send()
@@ -32,8 +38,8 @@ impl IpIp {
 
 #[async_trait]
 impl IpSource for IpIp {
-    async fn ip(&self) -> StringifyResult<IpAddr> {
-        let text = self.send_request().await.or_else(|err| {
+    async fn ip(&self, bind_address: Option<IpAddr>) -> StringifyResult<IpAddr> {
+        let text = self.send_request(bind_address).await.or_else(|err| {
             Err(StringifyError::new(format!(
                 "获取 IpIp 网页时发生错误：{}",
                 err
@@ -54,7 +60,7 @@ impl IpSource for IpIp {
     }
 }
 
-/// 从 IpIp 获取当前运行机器所处于的 ip 地址
+/// 从 独立服务器获取 IP 地址
 #[derive(Debug)]
 pub struct Standalone(Url);
 
@@ -66,8 +72,10 @@ impl Standalone {
 
 #[async_trait]
 impl IpSource for Standalone {
-    async fn ip(&self) -> StringifyResult<IpAddr> {
-        let response = reqwest::Client::new()
+    async fn ip(&self, bind_address: Option<IpAddr>) -> StringifyResult<IpAddr> {
+        let response = reqwest::ClientBuilder::new()
+            .local_address(bind_address)
+            .build()?
             .get(self.0.as_ref())
             .send()
             .await
@@ -102,7 +110,7 @@ mod tests {
     async fn test_ipip() -> StringifyResult<()> {
         let ip_source = IpIp;
 
-        let ip = ip_source.ip().await?;
+        let ip = ip_source.ip(None).await?;
         println!("{}", ip);
 
         Ok(())

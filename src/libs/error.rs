@@ -48,3 +48,9 @@ impl Display for StringifyError {
 }
 
 impl Error for StringifyError {}
+
+impl From<reqwest::Error> for StringifyError {
+    fn from(value: reqwest::Error) -> Self {
+        Self(format!("HTTP 请求出错：{value}"))
+    }
+}
