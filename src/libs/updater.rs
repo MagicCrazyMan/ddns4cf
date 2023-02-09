@@ -93,8 +93,19 @@ impl Updater {
     /// 启动循环更新
     pub async fn start(&mut self) {
         if let Some(bind_address) = self.bind_address {
-            info!("[{}] 正在使用手动绑定的本地地址：{}", self.nickname, bind_address);
-        } 
+            info!(
+                "[{}] 正在使用手动绑定的本地地址：{}",
+                self.nickname, bind_address
+            );
+        }
+
+        info!(
+            "[{}] 正在使用 IP 地址来源 {} {}",
+            self.nickname,
+            self.ip_source.name(),
+            self.ip_source.log()
+        );
+
         info!("[{}] 加载中...", self.nickname);
         self.prepare().await;
         info!("[{}] 加载完毕", self.nickname);
@@ -148,6 +159,8 @@ impl Updater {
         if new_ip == old_details.content {
             Ok(format!("IP 地址未发生变化，当前地址为：{}", new_ip))
         } else {
+            info!("[{}] 成功获取最新 IP 地址：{}", self.nickname, new_ip);
+
             let new_details = self.update_dns_record(&new_ip).await?;
 
             let msg = format!(

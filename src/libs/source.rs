@@ -10,6 +10,10 @@ use super::error::{StringifyError, StringifyResult};
 pub trait IpSource: Debug + Send + Sync {
     /// 获取当前运行机器所处于的 ip 地址
     async fn ip(&self, bind_address: Option<IpAddr>) -> StringifyResult<IpAddr>;
+
+    fn name(&self) -> &'static str;
+
+    fn log(&self) -> String;
 }
 
 /// 从 IpIp 获取当前运行机器所处于的 ip 地址
@@ -58,6 +62,14 @@ impl IpSource for IpIp {
 
         Ok(ip)
     }
+
+    fn name(&self) -> &'static str {
+        "IPIP"
+    }
+
+    fn log(&self) -> String {
+        String::new()
+    }
 }
 
 /// 从 独立服务器获取 IP 地址
@@ -97,6 +109,14 @@ impl IpSource for Standalone {
             )))?;
 
         Ok(ip_addr)
+    }
+
+    fn name(&self) -> &'static str {
+        "Standalone Server"
+    }
+
+    fn log(&self) -> String {
+        self.0.to_string()
     }
 }
 
