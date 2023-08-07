@@ -2,7 +2,7 @@ use std::{env, fs, net::IpAddr, path::Path};
 
 use reqwest::Url;
 use serde::{
-    de::{self, SeqAccess},
+    de::{self, SeqAccess, Visitor},
     Deserialize,
 };
 
@@ -17,6 +17,99 @@ use super::{
 static DEFAULT_FRESH_INTERVAL_SECONDS: u64 = 15 * 60;
 /// 默认全局出现错误时重试间隔
 static DEFAULT_RETRY_INTERVAL_SECONDS: u64 = 5 * 60;
+
+/// 配置内容数据结构
+///
+/// 包含全局参数及需要刷新的域名列表。
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct Configuration {
+    /// 绑定的本地 IP 地址，可选
+    bind_address: Option<IpAddr>,
+    /// 全局刷新间隔，单位秒。默认为 900 秒。
+    ///
+    /// 若通过 [`Domain`] 为单独的域名设置 `fresh_interval` 属性，该属性将不会被使用。
+    fresh_interval: Option<u64>,
+    /// 全局出现错误时重试间隔，单位秒。默认为 300 秒。
+    ///
+    /// 若通过 [`Domain`] 为单独的域名设置 `retry_interval` 属性，该属性将不会被使用。
+    retry_interval: Option<u64>,
+    /// 全局 IP 地址来源。默认为 `0`
+    ///
+    /// - `0`：IpIp
+    /// - `1`：独立服务器
+    ip_source: Option<IpSourceType>,
+    /// Cloudflare 账号列表
+    accounts: Vec<Account>,
+    /// Cloudflare 访问代理，可选。默认使用当前系统配置的全局代理
+    proxy: Option<Proxy>,
+}
+
+impl Configuration {
+    /// 获取绑定的本地 IP 地址
+    pub fn bind_address(&self) -> Option<IpAddr> {
+        self.bind_address
+    }
+
+    /// 获取全局刷新间隔，单位秒。默认为 900 秒。
+    pub fn fresh_interval(&self) -> u64 {
+        self.fresh_interval
+            .unwrap_or(DEFAULT_FRESH_INTERVAL_SECONDS)
+    }
+
+    /// 获取 Cloudflare 账号列表
+    pub fn accounts(&self) -> &[Account] {
+        self.accounts.as_ref()
+    }
+
+    /// 获取 IP 来源方式
+    pub fn ip_source_type(&self) -> &IpSourceType {
+        self.ip_source.as_ref().unwrap_or(&IpSourceType::IpIp)
+    }
+
+    /// 通过当前配置内容创建 [`Updater`] 列表
+    pub fn create_updaters(&self) -> Vec<Updater> {
+        let mut updaters = vec![];
+        self.accounts().iter().for_each(|account| {
+            account.domains().iter().for_each(|domain| {
+                let updater = Updater::new(
+                    domain.bind_address().or(self.bind_address()),
+                    domain
+                        .ip_source()
+                        .unwrap_or(self.ip_source_type())
+                        .to_ip_source(),
+                    domain.nickname(),
+                    account.token(),
+                    domain.id(),
+                    domain.zone_id(),
+                    domain.fresh_interval().unwrap_or(self.fresh_interval()),
+                    domain.retry_interval().unwrap_or(self.retry_interval()),
+                    self.proxy(),
+                );
+
+                updaters.push(updater);
+            })
+        });
+
+        updaters
+    }
+
+    /// 获取全局出现错误时重试间隔，单位秒。默认为 300 秒后。
+    pub fn retry_interval(&self) -> u64 {
+        self.retry_interval
+            .unwrap_or(DEFAULT_RETRY_INTERVAL_SECONDS)
+    }
+
+    /// 获取 Cloudflare 访问代理配置
+    pub fn proxy(&self) -> Option<reqwest::Proxy> {
+        // let Some(proxy) = &self.proxy else {
+        //     return None;
+        // };
+
+        // let proxy = reqwest::Proxy::https(proxy.url.as_str()).
+
+        self.proxy.as_ref().and_then(|proxy| Some(proxy.0.clone()))
+    }
+}
 
 /// 可用的 IP 地址来源方式
 ///
@@ -106,87 +199,8 @@ impl<'de> Deserialize<'de> for IpSourceType {
     }
 }
 
-/// 配置内容数据结构
-///
-/// 包含全局参数及需要刷新的域名列表。
-#[derive(serde_derive::Deserialize, Debug)]
-pub struct Configuration {
-    /// 绑定的本地 IP 地址，可选
-    bind_address: Option<IpAddr>,
-    /// 全局刷新间隔，单位秒。默认为 900 秒。
-    ///
-    /// 若通过 [`Domain`] 为单独的域名设置 `fresh_interval` 属性，该属性将不会被使用。
-    fresh_interval: Option<u64>,
-    /// 全局出现错误时重试间隔，单位秒。默认为 300 秒。
-    ///
-    /// 若通过 [`Domain`] 为单独的域名设置 `retry_interval` 属性，该属性将不会被使用。
-    retry_interval: Option<u64>,
-    /// 全局 IP 地址来源。默认为 `0`
-    ///
-    /// - `0`：IpIp
-    /// - `1`：独立服务器
-    ip_source: Option<IpSourceType>,
-    /// Cloudflare 账号列表
-    accounts: Vec<Account>,
-}
-
-impl Configuration {
-    /// 获取绑定的本地 IP 地址
-    pub fn bind_address(&self) -> Option<IpAddr> {
-        self.bind_address
-    }
-
-    /// 获取全局刷新间隔，单位秒。默认为 900 秒。
-    pub fn fresh_interval(&self) -> u64 {
-        self.fresh_interval
-            .unwrap_or(DEFAULT_FRESH_INTERVAL_SECONDS)
-    }
-
-    /// 获取 Cloudflare 账号列表
-    pub fn accounts(&self) -> &[Account] {
-        self.accounts.as_ref()
-    }
-
-    /// 获取 IP 来源方式
-    pub fn ip_source_type(&self) -> &IpSourceType {
-        self.ip_source.as_ref().unwrap_or(&IpSourceType::IpIp)
-    }
-
-    /// 通过当前配置内容创建 [`Updater`] 列表
-    pub fn create_updaters(&self) -> Vec<Updater> {
-        let mut updaters = vec![];
-        self.accounts().iter().for_each(|account| {
-            account.domains().iter().for_each(|domain| {
-                let updater = Updater::new(
-                    domain.bind_address().or(self.bind_address()),
-                    domain
-                        .ip_source()
-                        .unwrap_or(self.ip_source_type())
-                        .to_ip_source(),
-                    domain.nickname(),
-                    account.token(),
-                    domain.id(),
-                    domain.zone_id(),
-                    domain.fresh_interval().unwrap_or(self.fresh_interval()),
-                    domain.retry_interval().unwrap_or(self.retry_interval()),
-                );
-
-                updaters.push(updater);
-            })
-        });
-
-        updaters
-    }
-
-    /// 获取全局出现错误时重试间隔，单位秒。默认为 300 秒后。
-    pub fn retry_interval(&self) -> u64 {
-        self.retry_interval
-            .unwrap_or(DEFAULT_RETRY_INTERVAL_SECONDS)
-    }
-}
-
 /// Cloudflare 账号数据
-#[derive(serde_derive::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct Account {
     /// Cloudflare 账号 API token
     token: String,
@@ -207,7 +221,7 @@ impl Account {
 }
 
 /// Cloudflare 域名数据
-#[derive(serde_derive::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct Domain {
     /// 绑定的本地 IP 地址，可选
     bind_address: Option<IpAddr>,
@@ -268,6 +282,70 @@ impl Domain {
     /// 获取 IP 来源方式
     pub fn ip_source(&self) -> Option<&IpSourceType> {
         self.ip_source.as_ref()
+    }
+}
+
+/// Cloudflare 访问代理
+// #[derive(serde::Deserialize, Debug, Clone)]
+// pub struct Proxy {
+//     url: String,
+//     no_proxies: Vec<String>,
+//     username: Option<String>,
+//     password: Option<String>,
+// }
+#[derive(Debug, Clone)]
+pub struct Proxy(reqwest::Proxy);
+
+impl<'de> Deserialize<'de> for Proxy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ProxyVisitor;
+        impl<'de> Visitor<'de> for ProxyVisitor {
+            type Value = Proxy;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Cloudflare 访问代理配置")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let mut proxy_url = None;
+                let mut basic_auth_username = None;
+                let mut basic_auth_password = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "url" => proxy_url = Some(map.next_value::<String>()?),
+                        "username" => basic_auth_username = Some(map.next_value::<String>()?),
+                        "password" => basic_auth_password = Some(map.next_value::<String>()?),
+                        _ => {}
+                    }
+                }
+
+                let Some(proxy_url) = proxy_url else {
+                    return Err(serde::de::Error::missing_field("proxy.url"));
+                };
+                let Ok(mut proxy) = reqwest::Proxy::https(proxy_url.as_str()) else {
+                    return Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(proxy_url.as_str()), &"http, https or socks proxy url"));
+                };
+
+                match (basic_auth_username, basic_auth_password) {
+                    (None, None) => {}
+                    (None, Some(_)) => return Err(serde::de::Error::missing_field("proxy.username")),
+                    (Some(_), None) => return Err(serde::de::Error::missing_field("proxy.password")),
+                    (Some(username), Some(password)) => {
+                        proxy = proxy.basic_auth(username.as_str(), password.as_str());
+                    }
+                }
+
+                Ok(Proxy(proxy))
+            }
+        }
+
+        deserializer.deserialize_map(ProxyVisitor)
     }
 }
 

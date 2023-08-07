@@ -1,7 +1,7 @@
 use std::{fmt::Display, net::IpAddr, time::Duration};
 
 use log::{error, info};
-use reqwest::header;
+use reqwest::{header, ClientBuilder};
 
 use super::{
     error::{StringifyError, StringifyResult},
@@ -9,7 +9,7 @@ use super::{
 };
 
 /// Cloudflare API 响应
-#[derive(serde_derive::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug)]
 struct CloudflareResponse<T> {
     success: bool,
     errors: Option<Vec<CloudflareMessage>>,
@@ -17,7 +17,7 @@ struct CloudflareResponse<T> {
 }
 
 /// Cloudflare API 消息
-#[derive(serde_derive::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug)]
 struct CloudflareMessage {
     code: u32,
     message: String,
@@ -32,7 +32,7 @@ impl Display for CloudflareMessage {
 impl std::error::Error for CloudflareMessage {}
 
 /// Cloudflare API 域名详情
-#[derive(serde_derive::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug)]
 struct CloudflareRecordDetails {
     r#type: String,
     name: String,
@@ -42,7 +42,7 @@ struct CloudflareRecordDetails {
 }
 
 /// Cloudflare API 更新域名发送的消息负载
-#[derive(serde_derive::Serialize, Debug)]
+#[derive(serde::Serialize, Debug)]
 struct CloudflareUpdateDNSBody<'a> {
     r#type: &'a str,
     ttl: usize,
@@ -62,6 +62,7 @@ pub struct Updater {
     id: String,
     zone_id: String,
     ip_source: Box<dyn IpSource>,
+    proxy: Option<reqwest::Proxy>,
     details: Option<CloudflareRecordDetails>,
 }
 
@@ -76,6 +77,7 @@ impl Updater {
         zone_id: &str,
         refresh_interval: u64,
         retry_interval: u64,
+        proxy: Option<reqwest::Proxy>,
     ) -> Self {
         Self {
             bind_address,
@@ -86,10 +88,13 @@ impl Updater {
             zone_id: zone_id.to_string(),
             refresh_interval,
             retry_interval,
+            proxy,
             details: None,
         }
     }
+}
 
+impl Updater {
     /// 启动循环更新
     pub async fn start(&mut self) {
         if let Some(bind_address) = self.bind_address {
@@ -175,8 +180,8 @@ impl Updater {
     /// 尝试获取 Cloudflare DNS 记录详情
     async fn retrieve_dns_details(&self) -> StringifyResult<CloudflareRecordDetails> {
         // 访问 Cloudflare 获取当前 DNS 记录配置
-        let text = reqwest::ClientBuilder::new()
-            .local_address(self.bind_address)
+        let text = self
+            .default_client_builder()
             .build()?
             .get(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
@@ -223,8 +228,8 @@ impl Updater {
             proxied: details.proxied,
         };
 
-        let text = reqwest::ClientBuilder::new()
-            .local_address(self.bind_address)
+        let text = self
+            .default_client_builder()
             .build()?
             .put(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
@@ -258,5 +263,15 @@ impl Updater {
             });
             Err(StringifyError::cloudflare_update_failure(message))
         }
+    }
+
+    /// 默认 reqwest 请求构造器
+    fn default_client_builder(&self) -> ClientBuilder {
+        let mut builder = reqwest::ClientBuilder::new().local_address(self.bind_address);
+        if let Some(proxy) = &self.proxy {
+            builder = builder.proxy(proxy.clone());
+        }
+
+        builder
     }
 }
