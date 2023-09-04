@@ -1,6 +1,7 @@
-use std::{fmt::Debug, net::IpAddr};
+use std::{fmt::Debug, net::IpAddr, sync::OnceLock};
 
 use async_trait::async_trait;
+use regex::Regex;
 use reqwest::Url;
 
 use super::error::{StringifyError, StringifyResult};
@@ -30,7 +31,7 @@ impl IpIp {
     async fn send_request(&self, bind_address: Option<IpAddr>) -> Result<String, reqwest::Error> {
         let client = reqwest::ClientBuilder::new().local_address(bind_address).user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36").build()?;
         let html = client
-            .get("https://www.ipip.net/")
+            .get("https://www.ipip.net/ip.html#")
             .send()
             .await?
             .text()
@@ -50,14 +51,17 @@ impl IpSource for IpIp {
             )))
         })?;
 
-        let html = scraper::Html::parse_document(text.as_str());
-        let dom_selector = scraper::Selector::parse(".yourInfo a").unwrap();
-
-        let ip = html
-            .select(&dom_selector)
-            .nth(0)
-            .and_then(|tag| tag.text().next())
-            .and_then(|raw_ip| raw_ip.parse::<IpAddr>().ok())
+        static IP_EXTRACT_REGEX: OnceLock<Regex> = OnceLock::new();
+        let ip = IP_EXTRACT_REGEX
+            .get_or_init(|| {
+                Regex::new(
+                    r"\$\('input\[name=ip\]'\).attr\('value', '(.+)'\).get\(0\).form.submit\(\);",
+                )
+                .unwrap()
+            })
+            .captures(text.as_str())
+            .and_then(|captures| captures.get(1))
+            .and_then(|matched| matched.as_str().parse::<IpAddr>().ok())
             .ok_or(StringifyError::new("解析 IpIp 网页失败"))?;
 
         Ok(ip)
