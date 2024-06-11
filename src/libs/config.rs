@@ -122,7 +122,7 @@ impl Configuration {
 pub enum IpSourceType {
     IpIp,
     Standalone(Url),
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     LocalIPv6(Option<String>),
 }
 
@@ -131,7 +131,7 @@ impl IpSourceType {
         match self {
             IpSourceType::IpIp => Box::new(IpIp::new()),
             IpSourceType::Standalone(socket_addr) => Box::new(Standalone::new(socket_addr.clone())),
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             IpSourceType::LocalIPv6(interface_name) => {
                 Box::new(super::source::local_ipv6::LocalIPv6::new(
                     interface_name.clone().map(|name| Cow::Owned(name)),
@@ -151,7 +151,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
             type Value = IpSourceType;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
                 formatter.write_str(
                     "可用的 IP 地址来源方式为：0(IpIp)、 1(独立服务器) 或 2(Local IPv6)",
                 )?;
@@ -170,7 +170,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
                     1 => Err(E::custom(
                         "IP 来源方式 1(独立服务器) 必须指定服务器访问地址",
                     )),
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", target_os = "windows"))]
                     2 => Ok(IpSourceType::LocalIPv6(None)),
                     _ => Err(E::custom(format!("不支持的 IP 来源方式：{}", v))),
                 }
@@ -210,7 +210,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
                             "IP 来源方式 1(独立服务器) 必须指定服务器访问地址",
                         )),
                     },
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", target_os = "windows"))]
                     2 => Ok(IpSourceType::LocalIPv6(
                         interface.map(|name| name.to_string()),
                     )),

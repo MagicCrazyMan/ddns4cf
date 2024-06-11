@@ -47,7 +47,7 @@ impl IpSource for IpIp {
             )))
         })?;
 
-        static IP_EXTRACT_REGEX: OnceLock<Regex> = OnceLock::new();
+        const IP_EXTRACT_REGEX: OnceLock<Regex> = OnceLock::new();
         let ip = IP_EXTRACT_REGEX
             .get_or_init(|| {
                 Regex::new(
