@@ -3,10 +3,7 @@ use std::{fmt::Display, net::IpAddr, time::Duration};
 use log::{error, info};
 use reqwest::{header, ClientBuilder};
 
-use super::{
-    error::{StringifyError, StringifyResult},
-    source::IpSource,
-};
+use super::{error::Error, source::IpSource};
 
 /// Cloudflare API 响应
 #[derive(serde::Deserialize, Debug)]
@@ -157,7 +154,7 @@ impl Updater {
     }
 
     /// 触发更新
-    async fn update(&mut self) -> StringifyResult<String> {
+    async fn update(&mut self) -> Result<String, Error> {
         let old_details = self.details.as_ref().unwrap();
 
         let new_ip = self.ip_source.ip(self.bind_address).await?;
@@ -178,7 +175,7 @@ impl Updater {
     }
 
     /// 尝试获取 Cloudflare DNS 记录详情
-    async fn retrieve_dns_details(&self) -> StringifyResult<CloudflareRecordDetails> {
+    async fn retrieve_dns_details(&self) -> Result<CloudflareRecordDetails, Error> {
         // 访问 Cloudflare 获取当前 DNS 记录配置
         let text = self
             .default_client_builder()
@@ -191,13 +188,13 @@ impl Updater {
             .header(header::AUTHORIZATION, format!("Bearer {}", self.token))
             .send()
             .await
-            .or_else(|err| Err(StringifyError::cloudflare_network_failure(err)))?
+            .or_else(|err| Err(Error::cloudflare_network_failure(err)))?
             .text()
             .await
-            .or_else(|err| Err(StringifyError::cloudflare_deserialized_failure(err)))?;
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
         let details = json5::from_str::<CloudflareResponse<CloudflareRecordDetails>>(text.as_ref())
-            .or_else(|err| Err(StringifyError::cloudflare_deserialized_failure(err)))?;
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
         if details.success && details.result.is_some() {
             let details = details.result.unwrap();
@@ -211,12 +208,12 @@ impl Updater {
                     .join("；");
                 Some(message)
             });
-            Err(StringifyError::cloudflare_record_failure(message))
+            Err(Error::cloudflare_record_failure(message))
         }
     }
 
     /// 更新 Cloudflare DNS 记录
-    async fn update_dns_record(&self, new_ip: &IpAddr) -> StringifyResult<CloudflareRecordDetails> {
+    async fn update_dns_record(&self, new_ip: &IpAddr) -> Result<CloudflareRecordDetails, Error> {
         let details = self.details.as_ref().unwrap();
 
         // 访问 Cloudflare 更新当前 DNS 记录配置
@@ -241,13 +238,13 @@ impl Updater {
             .body(json5::to_string::<CloudflareUpdateDNSBody>(&body).unwrap())
             .send()
             .await
-            .or_else(|err| Err(StringifyError::cloudflare_network_failure(err)))?
+            .or_else(|err| Err(Error::cloudflare_network_failure(err)))?
             .text()
             .await
-            .or_else(|err| Err(StringifyError::cloudflare_deserialized_failure(err)))?;
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
         let details = json5::from_str::<CloudflareResponse<CloudflareRecordDetails>>(text.as_str())
-            .or_else(|err| Err(StringifyError::cloudflare_deserialized_failure(err)))?;
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
         if details.success && details.result.is_some() {
             let details = details.result.unwrap();
@@ -261,7 +258,7 @@ impl Updater {
                     .join("；");
                 Some(message)
             });
-            Err(StringifyError::cloudflare_update_failure(message))
+            Err(Error::cloudflare_update_failure(message))
         }
     }
 

@@ -5,6 +5,11 @@ edition = "2021"
 authors = ["Magic Crazy Man"]
 description = "Dynamic Domain Naming Service for Cloudflare"
 
+
+[features]
+default = ['linux']
+linux = []
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

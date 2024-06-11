@@ -1,13 +1,14 @@
-use std::{error::Error, fmt::Display};
-
-pub type StringifyResult<T> = std::result::Result<T, StringifyError>;
+use std::fmt::Display;
 
 /// 字符串化错误，仅用于打印异常内容，不用作任何判断。
-#[derive(Debug)]
-pub struct StringifyError(String);
+#[derive(Debug, Clone)]
+pub struct Error(String);
 
-impl StringifyError {
-    pub fn new<T: AsRef<str>>(reason: T) -> Self {
+impl Error {
+    pub fn new<T>(reason: T) -> Self
+    where
+        T: AsRef<str>,
+    {
         Self(reason.as_ref().to_string())
     }
 
@@ -41,15 +42,15 @@ impl StringifyError {
     }
 }
 
-impl Display for StringifyError {
+impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl Error for StringifyError {}
+impl std::error::Error for Error {}
 
-impl From<reqwest::Error> for StringifyError {
+impl From<reqwest::Error> for Error {
     fn from(value: reqwest::Error) -> Self {
         Self(format!("HTTP 请求出错：{value}"))
     }

@@ -8,8 +8,8 @@ use serde::{
 
 use super::{
     args,
-    error::{StringifyError, StringifyResult},
-    source::{IpIp, IpSource, Standalone},
+    error::Error,
+    source::{ipip::IpIp, local_stable_ipv6::LocalStableIPv6, standalone::Standalone, IpSource},
     updater::Updater,
 };
 
@@ -37,6 +37,7 @@ pub struct Configuration {
     ///
     /// - `0`：IpIp
     /// - `1`：独立服务器
+    /// - `2`：基于 Linux ip 命令查询
     ip_source: Option<IpSourceType>,
     /// Cloudflare 账号列表
     accounts: Vec<Account>,
@@ -115,10 +116,13 @@ impl Configuration {
 ///
 /// - `0`：IpIp
 /// - `1`：独立服务器
+/// - `2`：基于 Linux ip 命令查询
 #[derive(Debug, Clone)]
 pub enum IpSourceType {
     IpIp,
     Standalone(Url),
+    #[cfg(feature = "linux")]
+    LocalStableIPv6,
 }
 
 impl IpSourceType {
@@ -126,6 +130,8 @@ impl IpSourceType {
         match self {
             IpSourceType::IpIp => Box::new(IpIp::new()),
             IpSourceType::Standalone(socket_addr) => Box::new(Standalone::new(socket_addr.clone())),
+            #[cfg(feature = "linux")]
+            IpSourceType::LocalStableIPv6 => Box::new(LocalStableIPv6::new()),
         }
     }
 }
@@ -169,6 +175,8 @@ impl<'de> Deserialize<'de> for IpSourceType {
                 let socket_addr = match ip_source_type {
                     0 => return Ok(IpSourceType::IpIp),
                     1 => seq.next_element::<String>()?.unwrap_or(String::new()),
+                    #[cfg(feature = "linux")]
+                    2 => return Ok(IpSourceType::LocalStableIPv6),
                     _ => {
                         return Err(de::Error::custom(format!(
                             "不支持的 IP 来源方式：{}",
@@ -329,13 +337,20 @@ impl<'de> Deserialize<'de> for Proxy {
                     return Err(serde::de::Error::missing_field("proxy.url"));
                 };
                 let Ok(mut proxy) = reqwest::Proxy::https(proxy_url.as_str()) else {
-                    return Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(proxy_url.as_str()), &"http, https or socks proxy url"));
+                    return Err(serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Str(proxy_url.as_str()),
+                        &"http, https or socks proxy url",
+                    ));
                 };
 
                 match (basic_auth_username, basic_auth_password) {
                     (None, None) => {}
-                    (None, Some(_)) => return Err(serde::de::Error::missing_field("proxy.username")),
-                    (Some(_), None) => return Err(serde::de::Error::missing_field("proxy.password")),
+                    (None, Some(_)) => {
+                        return Err(serde::de::Error::missing_field("proxy.username"))
+                    }
+                    (Some(_), None) => {
+                        return Err(serde::de::Error::missing_field("proxy.password"))
+                    }
                     (Some(username), Some(password)) => {
                         proxy = proxy.basic_auth(username.as_str(), password.as_str());
                     }
@@ -352,7 +367,7 @@ impl<'de> Deserialize<'de> for Proxy {
 static DEFAULT_CONFIGURATION_NAME: &'static str = "config.json5";
 
 /// 获取配置数据
-pub fn configuration() -> StringifyResult<Configuration> {
+pub fn configuration() -> Result<Configuration, Error> {
     let matches = args::arguments();
     match matches.value_of("config") {
         Some(value) => read_configuration(value),
@@ -361,12 +376,14 @@ pub fn configuration() -> StringifyResult<Configuration> {
 }
 
 /// 从文件路径读取配置，并通过 `json5` 解析。
-fn read_configuration<F>(file: F) -> StringifyResult<Configuration>
+fn read_configuration<F>(file: F) -> Result<Configuration, Error>
 where
     F: AsRef<Path>,
 {
-    let text = fs::read_to_string(file)
-        .or_else(|err| Err(StringifyError::read_configuration_failure(err)))?;
-    Ok(json5::from_str(text.as_str())
-        .or_else(|err| Err(StringifyError::read_configuration_failure(err)))?)
+    let text =
+        fs::read_to_string(file).or_else(|err| Err(Error::read_configuration_failure(err)))?;
+    Ok(
+        json5::from_str(text.as_str())
+            .or_else(|err| Err(Error::read_configuration_failure(err)))?,
+    )
 }

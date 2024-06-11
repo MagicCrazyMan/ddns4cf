@@ -1,5 +1,5 @@
 use futures::future::join_all;
-use libs::{config, error::StringifyResult};
+use libs::{config, error::Error};
 use log::error;
 
 mod libs;
@@ -51,7 +51,7 @@ fn setup_logger() {
         .unwrap();
 }
 
-async fn start() -> StringifyResult<()> {
+async fn start() -> Result<(), Error> {
     let configuration = config::configuration()?;
     let updaters = configuration.create_updaters();
 
