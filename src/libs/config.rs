@@ -210,6 +210,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
                             "IP 来源方式 1(独立服务器) 必须指定服务器访问地址",
                         )),
                     },
+                    #[cfg(target_os = "linux")]
                     2 => Ok(IpSourceType::LocalIPv6(
                         interface.map(|name| name.to_string()),
                     )),
