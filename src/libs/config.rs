@@ -1,15 +1,16 @@
-use std::{env, fs, net::IpAddr, path::Path};
+use std::{borrow::Cow, env, fs, net::IpAddr, path::Path};
 
 use reqwest::Url;
 use serde::{
-    de::{self, SeqAccess, Visitor},
+    de::{self, Visitor},
     Deserialize,
 };
+use smallvec::SmallVec;
 
 use super::{
     args,
     error::Error,
-    source::{ipip::IpIp, local_stable_ipv6::LocalStableIPv6, standalone::Standalone, IpSource},
+    source::{ipip::IpIp, standalone::Standalone, IpSource},
     updater::Updater,
 };
 
@@ -37,7 +38,7 @@ pub struct Configuration {
     ///
     /// - `0`：IpIp
     /// - `1`：独立服务器
-    /// - `2`：基于 Linux ip 命令查询
+    /// - `2`：基于 Linux ip 命令查询（仅限 linux 系统）
     ip_source: Option<IpSourceType>,
     /// Cloudflare 账号列表
     accounts: Vec<Account>,
@@ -68,8 +69,8 @@ impl Configuration {
     }
 
     /// 通过当前配置内容创建 [`Updater`] 列表
-    pub fn create_updaters(&self) -> Vec<Updater> {
-        let mut updaters = vec![];
+    pub fn create_updaters(&self) -> SmallVec<[Updater; 4]> {
+        let mut updaters = SmallVec::new();
         self.accounts().iter().for_each(|account| {
             account.domains().iter().for_each(|domain| {
                 let updater = Updater::new(
@@ -116,13 +117,13 @@ impl Configuration {
 ///
 /// - `0`：IpIp
 /// - `1`：独立服务器
-/// - `2`：基于 Linux ip 命令查询
+/// - `2`：基于 Linux ip 命令查询（仅限 linux 系统）
 #[derive(Debug, Clone)]
 pub enum IpSourceType {
     IpIp,
     Standalone(Url),
-    #[cfg(feature = "linux")]
-    LocalStableIPv6,
+    #[cfg(target_os = "linux")]
+    LocalIPv6(Option<String>),
 }
 
 impl IpSourceType {
@@ -130,8 +131,12 @@ impl IpSourceType {
         match self {
             IpSourceType::IpIp => Box::new(IpIp::new()),
             IpSourceType::Standalone(socket_addr) => Box::new(Standalone::new(socket_addr.clone())),
-            #[cfg(feature = "linux")]
-            IpSourceType::LocalStableIPv6 => Box::new(LocalStableIPv6::new()),
+            #[cfg(target_os = "linux")]
+            IpSourceType::LocalIPv6(interface_name) => {
+                Box::new(super::source::local_ipv6::LocalIPv6::new(
+                    interface_name.clone().map(|name| Cow::Owned(name)),
+                ))
+            }
         }
     }
 }
@@ -146,7 +151,14 @@ impl<'de> Deserialize<'de> for IpSourceType {
             type Value = IpSourceType;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("可用的 IP 地址来源方式为：0(IpIp) 或 1(独立服务器)")
+                #[cfg(target_os = "linux")]
+                formatter.write_str(
+                    "可用的 IP 地址来源方式为：0(IpIp)、 1(独立服务器) 或 2(Local IPv6)",
+                )?;
+                #[cfg(not(target_os = "linux"))]
+                formatter.write_str("可用的 IP 地址来源方式为：0(IpIp) 或 1(独立服务器)")?;
+
+                Ok(())
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
@@ -156,50 +168,56 @@ impl<'de> Deserialize<'de> for IpSourceType {
                 match v {
                     0 => Ok(IpSourceType::IpIp),
                     1 => Err(E::custom(
-                        "IP 来源方式 2(独立服务器) 必须指定服务器访问地址",
+                        "IP 来源方式 1(独立服务器) 必须指定服务器访问地址",
                     )),
+                    #[cfg(target_os = "linux")]
+                    2 => Ok(IpSourceType::LocalIPv6(None)),
                     _ => Err(E::custom(format!("不支持的 IP 来源方式：{}", v))),
                 }
             }
 
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
             where
-                A: SeqAccess<'de>,
+                A: de::MapAccess<'de>,
             {
-                let ip_source_type = match seq.next_element::<i64>()? {
-                    Some(v) => v,
-                    // 如果没有内容，则默认使用 IpIp
-                    None => return Ok(IpSourceType::IpIp),
-                };
+                let mut r#type = None;
+                let mut server = None;
+                let mut interface = None;
 
-                let socket_addr = match ip_source_type {
-                    0 => return Ok(IpSourceType::IpIp),
-                    1 => seq.next_element::<String>()?.unwrap_or(String::new()),
-                    #[cfg(feature = "linux")]
-                    2 => return Ok(IpSourceType::LocalStableIPv6),
-                    _ => {
-                        return Err(de::Error::custom(format!(
-                            "不支持的 IP 来源方式：{}",
-                            ip_source_type
-                        )))
+                while let Some(key) = map.next_key::<Cow<'_, str>>()? {
+                    match &*key {
+                        "type" => r#type = Some(map.next_value::<i64>()?),
+                        "server" => server = Some(map.next_value::<Cow<'_, str>>()?),
+                        "interface" => interface = Some(map.next_value::<Cow<'_, str>>()?),
+                        _ => {}
                     }
+                }
+
+                let Some(r#type) = r#type else {
+                    return Err(de::Error::missing_field("type"));
                 };
 
-                let socket_addr = if socket_addr.is_empty() {
-                    return Err(de::Error::custom(
-                        "IP 来源方式 2(独立服务器) 必须指定服务器访问地址",
-                    ));
-                } else {
-                    socket_addr
-                };
-
-                let socket_addr = if let Ok(socket_addr) = socket_addr.parse::<Url>() {
-                    socket_addr
-                } else {
-                    return Err(de::Error::custom(format!("非法地址：{}", socket_addr)));
-                };
-
-                Ok(IpSourceType::Standalone(socket_addr))
+                match r#type {
+                    0 => Ok(IpSourceType::IpIp),
+                    1 => match server {
+                        Some(server) => {
+                            let Ok(server) = server.parse::<Url>() else {
+                                return Err(de::Error::custom(format!("无效服务器地址：{}", server)));
+                            };
+                            Ok(IpSourceType::Standalone(server))
+                        }
+                        None => Err(de::Error::custom(
+                            "IP 来源方式 1(独立服务器) 必须指定服务器访问地址",
+                        )),
+                    },
+                    2 => Ok(IpSourceType::LocalIPv6(
+                        interface.map(|name| name.to_string()),
+                    )),
+                    _ => Err(de::Error::custom(format!(
+                        "不支持的 IP 来源方式：{}",
+                        r#type
+                    ))),
+                }
             }
         }
 
@@ -245,6 +263,7 @@ pub struct Domain {
     ///
     /// - `0`：IpIp
     /// - `1`：独立服务器
+    /// - `2`：基于 Linux ip 命令查询（仅限 linux 系统）
     ///
     /// 若未配置该项，则会使用 [`Configuration`] 中 `ip_source` 属性。
     ip_source: Option<IpSourceType>,

@@ -1,4 +1,4 @@
-use std::{fmt::Debug, net::IpAddr, sync::OnceLock};
+use std::{borrow::Cow, fmt::Debug, net::IpAddr, sync::OnceLock};
 
 use async_trait::async_trait;
 use regex::Regex;
@@ -18,7 +18,7 @@ impl IpIp {
 }
 
 impl IpIp {
-    async fn send_request(&self, bind_address: Option<IpAddr>) -> Result<String, reqwest::Error> {
+    async fn send(&self, bind_address: Option<IpAddr>) -> Result<String, reqwest::Error> {
         let client = reqwest::ClientBuilder::new().local_address(bind_address).user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36").build()?;
         let html = client
             .get("https://www.ipip.net/ip.html#")
@@ -34,10 +34,18 @@ impl IpIp {
 #[async_trait]
 impl IpSource for IpIp {
     async fn ip(&self, bind_address: Option<IpAddr>) -> Result<IpAddr, Error> {
-        let text = self
-            .send_request(bind_address)
-            .await
-            .or_else(|err| Err(Error::new(format!("获取 IpIp 网页时发生错误：{}", err))))?;
+        if let Some(bind_address) = bind_address.as_ref() {
+            if bind_address.is_ipv6() {
+                return Err(Error::new_str("IpIp 不支持获取 IPv6 地址"));
+            }
+        }
+
+        let text = self.send(bind_address).await.or_else(|err| {
+            Err(Error::new_string(format!(
+                "获取 IpIp 网页时发生错误：{}",
+                err
+            )))
+        })?;
 
         static IP_EXTRACT_REGEX: OnceLock<Regex> = OnceLock::new();
         let ip = IP_EXTRACT_REGEX
@@ -50,17 +58,17 @@ impl IpSource for IpIp {
             .captures(text.as_str())
             .and_then(|captures| captures.get(1))
             .and_then(|matched| matched.as_str().parse::<IpAddr>().ok())
-            .ok_or(Error::new("解析 IpIp 网页失败"))?;
+            .ok_or(Error::new_str("解析 IpIp 网页失败"))?;
 
         Ok(ip)
     }
 
     fn name(&self) -> &'static str {
-        "IPIP"
+        "IpIp"
     }
 
-    fn log(&self) -> String {
-        String::new()
+    fn info(&self) -> Option<Cow<'_, str>> {
+        None
     }
 }
 

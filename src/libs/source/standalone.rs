@@ -1,4 +1,4 @@
-use std::{fmt::Debug, net::IpAddr};
+use std::{borrow::Cow, fmt::Debug, net::IpAddr, str::FromStr};
 
 use async_trait::async_trait;
 use reqwest::Url;
@@ -15,11 +15,11 @@ impl Standalone {
     pub fn new(url: Url) -> Self {
         Self(url)
     }
-}
 
-#[async_trait]
-impl IpSource for Standalone {
-    async fn ip(&self, bind_address: Option<IpAddr>) -> Result<IpAddr, Error> {
+    async fn send<T>(&self, bind_address: Option<IpAddr>) -> Result<T, Error>
+    where
+        T: FromStr,
+    {
         let response = reqwest::ClientBuilder::new()
             .local_address(bind_address)
             .build()?
@@ -27,7 +27,7 @@ impl IpSource for Standalone {
             .send()
             .await
             .or_else(|err| {
-                Err(Error::new(format!(
+                Err(Error::new_string(format!(
                     "访问独立服务器 {} 失败：{}",
                     self.0, err
                 )))
@@ -37,20 +37,27 @@ impl IpSource for Standalone {
             .text()
             .await
             .ok()
-            .and_then(|text| text.parse::<IpAddr>().ok())
-            .ok_or(Error::new(format!(
+            .and_then(|text| text.parse::<T>().ok())
+            .ok_or(Error::new_string(format!(
                 "从独立服务器 {} 中解析 IP 地址失败",
                 self.0
             )))?;
 
         Ok(ip_addr)
     }
+}
+
+#[async_trait]
+impl IpSource for Standalone {
+    async fn ip(&self, bind_address: Option<IpAddr>) -> Result<IpAddr, Error> {
+        self.send(bind_address).await
+    }
 
     fn name(&self) -> &'static str {
         "Standalone Server"
     }
 
-    fn log(&self) -> String {
-        self.0.to_string()
+    fn info(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Owned(self.0.to_string()))
     }
 }

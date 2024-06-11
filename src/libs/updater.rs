@@ -1,4 +1,4 @@
-use std::{fmt::Display, net::IpAddr, time::Duration};
+use std::{borrow::Cow, fmt::Display, net::IpAddr, time::Duration};
 
 use log::{error, info};
 use reqwest::{header, ClientBuilder};
@@ -105,7 +105,7 @@ impl Updater {
             "[{}] 正在使用 IP 地址来源 {} {}",
             self.nickname,
             self.ip_source.name(),
-            self.ip_source.log()
+            self.ip_source.info().unwrap_or(Cow::Borrowed(""))
         );
 
         info!("[{}] 加载中...", self.nickname);
@@ -206,7 +206,7 @@ impl Updater {
                     .map(|error| error.to_string())
                     .collect::<Vec<_>>()
                     .join("；");
-                Some(message)
+                Some(Cow::Owned(message))
             });
             Err(Error::cloudflare_record_failure(message))
         }
@@ -256,7 +256,7 @@ impl Updater {
                     .map(|error| error.to_string())
                     .collect::<Vec<_>>()
                     .join("；");
-                Some(message)
+                Some(Cow::Owned(message))
             });
             Err(Error::cloudflare_update_failure(message))
         }
