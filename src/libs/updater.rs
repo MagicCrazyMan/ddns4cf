@@ -7,26 +7,29 @@ use super::{error::Error, source::IpSource};
 
 /// Cloudflare API 响应
 #[derive(serde::Deserialize, Debug)]
-struct CloudflareResponse<T> {
+struct CloudflareResponse<'a, T> {
     success: bool,
-    errors: Option<Vec<CloudflareMessage>>,
+    errors: Option<Vec<CloudflareMessage<'a>>>,
     result: Option<T>,
 }
 
 /// Cloudflare API 消息
 #[derive(serde::Deserialize, Debug)]
-struct CloudflareMessage {
+struct CloudflareMessage<'a> {
     code: u32,
-    message: String,
+    message: Cow<'a, str>,
 }
 
-impl Display for CloudflareMessage {
+impl<'a> Display for CloudflareMessage<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("代码 {}：{}", self.code, self.message))
+        f.write_fmt(format_args!(
+            "Cloudflare 响应代码 {}：{}",
+            self.code, self.message
+        ))
     }
 }
 
-impl std::error::Error for CloudflareMessage {}
+impl<'a> std::error::Error for CloudflareMessage<'a> {}
 
 /// Cloudflare API 域名详情
 #[derive(serde::Deserialize, Debug)]
@@ -177,7 +180,7 @@ impl Updater {
     /// 尝试获取 Cloudflare DNS 记录详情
     async fn retrieve_dns_details(&self) -> Result<CloudflareRecordDetails, Error> {
         // 访问 Cloudflare 获取当前 DNS 记录配置
-        let text = self
+        let mut bytes = self
             .default_client_builder()
             .build()?
             .get(format!(
@@ -189,26 +192,28 @@ impl Updater {
             .send()
             .await
             .or_else(|err| Err(Error::cloudflare_network_failure(err)))?
-            .text()
+            .bytes()
             .await
-            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?
+            .to_vec();
 
-        let details = json5::from_str::<CloudflareResponse<CloudflareRecordDetails>>(text.as_ref())
-            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
+        let details =
+            simd_json::from_slice::<CloudflareResponse<CloudflareRecordDetails>>(&mut bytes)
+                .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
-        if details.success && details.result.is_some() {
-            let details = details.result.unwrap();
-            Ok(details)
-        } else {
-            let message = details.errors.and_then(|errors| {
-                let message = errors
-                    .into_iter()
-                    .map(|error| error.to_string())
-                    .collect::<Vec<_>>()
-                    .join("；");
-                Some(Cow::Owned(message))
-            });
-            Err(Error::cloudflare_record_failure(message))
+        match (details.success, details.result) {
+            (true, Some(details)) => Ok(details),
+            (false, _) | (true, None) => {
+                let message = details.errors.and_then(|errors| {
+                    let message = errors
+                        .into_iter()
+                        .map(|error| error.to_string())
+                        .collect::<Vec<_>>()
+                        .join("；");
+                    Some(Cow::Owned(message))
+                });
+                Err(Error::cloudflare_record_failure(message))
+            }
         }
     }
 
@@ -225,7 +230,7 @@ impl Updater {
             proxied: details.proxied,
         };
 
-        let text = self
+        let mut bytes = self
             .default_client_builder()
             .build()?
             .put(format!(
@@ -234,31 +239,33 @@ impl Updater {
             ))
             .header(header::CONTENT_TYPE, "application/json")
             .header(header::AUTHORIZATION, format!("Bearer {}", self.token))
-            // 由于需要使用 json5 的序列化，所以此处使用 body
-            .body(json5::to_string::<CloudflareUpdateDNSBody>(&body).unwrap())
+            // 由于需要序列化，所以此处使用 body
+            .body(simd_json::to_string::<CloudflareUpdateDNSBody>(&body).unwrap())
             .send()
             .await
             .or_else(|err| Err(Error::cloudflare_network_failure(err)))?
-            .text()
+            .bytes()
             .await
-            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?
+            .to_vec();
 
-        let details = json5::from_str::<CloudflareResponse<CloudflareRecordDetails>>(text.as_str())
-            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
+        let details =
+            simd_json::from_slice::<CloudflareResponse<CloudflareRecordDetails>>(&mut bytes)
+                .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
-        if details.success && details.result.is_some() {
-            let details = details.result.unwrap();
-            Ok(details)
-        } else {
-            let message = details.errors.and_then(|errors| {
-                let message = errors
-                    .into_iter()
-                    .map(|error| error.to_string())
-                    .collect::<Vec<_>>()
-                    .join("；");
-                Some(Cow::Owned(message))
-            });
-            Err(Error::cloudflare_update_failure(message))
+        match (details.success, details.result) {
+            (true, Some(details)) => Ok(details),
+            (false, _) | (true, None) => {
+                let message = details.errors.and_then(|errors| {
+                    let message = errors
+                        .into_iter()
+                        .map(|error| error.to_string())
+                        .collect::<Vec<_>>()
+                        .join("；");
+                    Some(Cow::Owned(message))
+                });
+                Err(Error::cloudflare_update_failure(message))
+            }
         }
     }
 

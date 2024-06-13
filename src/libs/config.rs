@@ -44,6 +44,8 @@ pub struct Configuration {
     accounts: Vec<Account>,
     /// Cloudflare 访问代理，可选。默认使用当前系统配置的全局代理
     proxy: Option<Proxy>,
+    // /// 日志
+    // log: Option<Log>,
 }
 
 impl Configuration {
@@ -111,6 +113,11 @@ impl Configuration {
 
         self.proxy.as_ref().and_then(|proxy| Some(proxy.0.clone()))
     }
+
+    // /// 获取日志参数
+    // pub fn log(&self) -> Option<&Log> {
+    //     self.log.as_ref()
+    // }
 }
 
 /// 可用的 IP 地址来源方式
@@ -155,7 +162,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
                 formatter.write_str(
                     "可用的 IP 地址来源方式为：0(IpIp)、 1(独立服务器) 或 2(Local IPv6)",
                 )?;
-                #[cfg(not(target_os = "linux"))]
+                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
                 formatter.write_str("可用的 IP 地址来源方式为：0(IpIp) 或 1(独立服务器)")?;
 
                 Ok(())
@@ -202,7 +209,10 @@ impl<'de> Deserialize<'de> for IpSourceType {
                     1 => match server {
                         Some(server) => {
                             let Ok(server) = server.parse::<Url>() else {
-                                return Err(de::Error::custom(format!("无效服务器地址：{}", server)));
+                                return Err(de::Error::custom(format!(
+                                    "无效服务器地址：{}",
+                                    server
+                                )));
                             };
                             Ok(IpSourceType::Standalone(server))
                         }
@@ -384,6 +394,30 @@ impl<'de> Deserialize<'de> for Proxy {
     }
 }
 
+// #[derive(serde::Deserialize, Debug, Clone)]
+// pub struct Log {
+//     level: Option<log::LevelFilter>,
+//     out: Option<PathBuf>,
+//     err: Option<PathBuf>,
+// }
+
+// impl Log {
+//     /// 获取日志级别
+//     pub fn level(&self) -> Option<log::LevelFilter> {
+//         self.level.clone()
+//     }
+
+//     /// 获取日志信息输出内容日志文件保存位置
+//     pub fn out(&self) -> Option<&Path> {
+//         self.out.as_ref().map(|path| path.as_path())
+//     }
+
+//     /// 获取日志错误输出内容日志文件保存位置
+//     pub fn err(&self) -> Option<&Path> {
+//         self.err.as_ref().map(|path| path.as_path())
+//     }
+// }
+
 static DEFAULT_CONFIGURATION_NAME: &'static str = "config.json5";
 
 /// 获取配置数据
@@ -391,17 +425,21 @@ pub fn configuration() -> Result<Configuration, Error> {
     let matches = args::arguments();
     match matches.value_of("config") {
         Some(value) => read_configuration(value),
-        None => read_configuration(env::current_dir().unwrap().join(DEFAULT_CONFIGURATION_NAME)),
+        None => read_configuration(
+            env::current_exe()
+                .or(Err(Error::new_str("无法获取当前程序所在文件夹")))?
+                .join(DEFAULT_CONFIGURATION_NAME),
+        ),
     }
 }
 
 /// 从文件路径读取配置，并通过 `json5` 解析。
-fn read_configuration<F>(file: F) -> Result<Configuration, Error>
+fn read_configuration<P>(path: P) -> Result<Configuration, Error>
 where
-    F: AsRef<Path>,
+    P: AsRef<Path>,
 {
     let text =
-        fs::read_to_string(file).or_else(|err| Err(Error::read_configuration_failure(err)))?;
+        fs::read_to_string(path).or_else(|err| Err(Error::read_configuration_failure(err)))?;
     Ok(
         json5::from_str(text.as_str())
             .or_else(|err| Err(Error::read_configuration_failure(err)))?,

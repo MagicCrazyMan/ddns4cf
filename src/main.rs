@@ -14,37 +14,22 @@ async fn main() {
     }
 }
 
-#[cfg(test)]
 fn setup_logger() {
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
-                "{}[{}][{:5}]{}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                "[{}][{}][{:5}]{}",
+                chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
                 record.target(),
                 record.level(),
                 message
             ))
         })
-        .level(log::LevelFilter::Debug)
-        .level_for(env!("CARGO_PKG_NAME"), log::LevelFilter::Info)
-        .chain(std::io::stdout())
-        .apply()
-        .unwrap();
-}
-
-#[cfg(not(test))]
-fn setup_logger() {
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{:5}]{}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.level(),
-                message
-            ))
+        .level(if cfg!(test) {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
         })
-        .level(log::LevelFilter::Info)
         .level_for(env!("CARGO_PKG_NAME"), log::LevelFilter::Info)
         .chain(std::io::stdout())
         .apply()

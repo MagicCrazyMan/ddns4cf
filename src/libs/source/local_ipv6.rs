@@ -4,7 +4,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use serde::Deserialize;
 
 use crate::libs::error::Error;
 
@@ -38,8 +37,30 @@ impl LocalIPv6 {
 
     #[cfg(target_os = "linux")]
     async fn ip_linux(&self) -> Result<IpAddr, Error> {
+        use serde::Deserialize;
         use smallvec::SmallVec;
         use tokio::process::Command;
+
+        #[derive(Deserialize)]
+        struct Interface<'a> {
+            ifname: Cow<'a, str>,
+            operstate: Cow<'a, str>,
+            addr_info: Vec<AddrInfo<'a>>,
+        }
+
+        #[derive(Deserialize)]
+        struct AddrInfo<'a> {
+            local: Ipv6Addr,
+            scope: Cow<'a, str>,
+            #[serde(default)]
+            temporary: bool,
+            #[serde(default)]
+            dynamic: bool,
+            #[serde(default)]
+            mngtmpaddr: bool,
+            #[serde(default)]
+            noprefixroute: bool,
+        }
 
         let output = Command::new("ip")
             .arg("-6")
@@ -48,12 +69,13 @@ impl LocalIPv6 {
             .output()
             .await;
 
-        let output = match output {
+        let mut output = match output {
             Ok(output) => output,
             Err(err) => return Err(Error::new_string(format!("执行命令时发生错误：{err}"))),
         };
 
-        let interfaces = match serde_json::from_slice::<SmallVec<[Interface; 8]>>(&output.stdout) {
+        let interfaces = match simd_json::from_slice::<SmallVec<[Interface; 8]>>(&mut output.stdout)
+        {
             Ok(interfaces) => interfaces,
             Err(err) => return Err(Error::new_string(format!("解析 JSON 时发生错误：{err}"))),
         };
@@ -196,27 +218,6 @@ impl IpSource for LocalIPv6 {
             None => None,
         }
     }
-}
-
-#[derive(Deserialize)]
-struct Interface<'a> {
-    ifname: Cow<'a, str>,
-    operstate: Cow<'a, str>,
-    addr_info: Vec<AddrInfo<'a>>,
-}
-
-#[derive(Deserialize)]
-struct AddrInfo<'a> {
-    local: Ipv6Addr,
-    scope: Cow<'a, str>,
-    #[serde(default)]
-    temporary: bool,
-    #[serde(default)]
-    dynamic: bool,
-    #[serde(default)]
-    mngtmpaddr: bool,
-    #[serde(default)]
-    noprefixroute: bool,
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ impl Standalone {
     where
         T: FromStr,
     {
-        let response = reqwest::ClientBuilder::new()
+        let text = reqwest::ClientBuilder::new()
             .local_address(bind_address)
             .build()?
             .get(self.0.as_ref())
@@ -31,17 +31,22 @@ impl Standalone {
                     "访问独立服务器 {} 失败：{}",
                     self.0, err
                 )))
-            })?;
-
-        let ip_addr = response
+            })?
             .text()
             .await
-            .ok()
-            .and_then(|text| text.parse::<T>().ok())
-            .ok_or(Error::new_string(format!(
-                "从独立服务器 {} 中解析 IP 地址失败",
+            .or_else(|err| {
+                Err(Error::new_string(format!(
+                    "解析独立服务器 {} 消息失败：{}",
+                    self.0, err
+                )))
+            })?;
+
+        let ip_addr = text.parse::<T>().or_else(|_| {
+            Err(Error::new_string(format!(
+                "独立服务器 {} 响应消息并非合法 IP 地址",
                 self.0
-            )))?;
+            )))
+        })?;
 
         Ok(ip_addr)
     }
