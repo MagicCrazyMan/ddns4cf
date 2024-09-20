@@ -2,6 +2,7 @@ use std::{borrow::Cow, fmt::Display, net::IpAddr, time::Duration};
 
 use log::{error, info};
 use reqwest::{header, ClientBuilder};
+use tokio::time::sleep;
 
 use super::{error::Error, source::IpSource};
 
@@ -54,13 +55,13 @@ struct CloudflareUpdateDNSBody<'a> {
 /// Cloudflare 域名更新器，所有更新相关的操作均由该结构负责完成。
 #[derive(Debug)]
 pub struct Updater {
-    bind_address: Option<IpAddr>,
-    refresh_interval: u64,
-    retry_interval: u64,
-    nickname: String,
-    token: String,
-    id: String,
-    zone_id: String,
+    pub bind_address: Option<IpAddr>,
+    pub refresh_interval: u64,
+    pub retry_interval: u64,
+    pub nickname: String,
+    pub token: String,
+    pub id: String,
+    pub zone_id: String,
     ip_source: Box<dyn IpSource>,
     proxy: Option<reqwest::Proxy>,
     details: Option<CloudflareRecordDetails>,
@@ -95,8 +96,8 @@ impl Updater {
 }
 
 impl Updater {
-    /// 启动循环更新
-    pub async fn start(&mut self) {
+    /// 初始化
+    pub async fn init(&mut self) {
         if let Some(bind_address) = self.bind_address {
             info!(
                 "[{}] 正在使用手动绑定的本地地址：{}",
@@ -111,28 +112,9 @@ impl Updater {
             self.ip_source.info().unwrap_or(Cow::Borrowed(""))
         );
 
-        info!("[{}] 加载中...", self.nickname);
+        info!("[{}] 初始化中...", self.nickname);
         self.prepare().await;
-        info!("[{}] 加载完毕", self.nickname);
-
-        loop {
-            match self.update().await {
-                Ok(msg) => {
-                    info!(
-                        "[{}] {}。{} 秒后进行下次检查。",
-                        self.nickname, msg, self.refresh_interval
-                    );
-                    tokio::time::sleep(Duration::from_secs(self.refresh_interval)).await;
-                }
-                Err(err) => {
-                    error!(
-                        "[{}] {}。将在 {} 秒后重试",
-                        self.nickname, err, self.retry_interval
-                    );
-                    tokio::time::sleep(Duration::from_secs(self.retry_interval)).await;
-                }
-            };
-        }
+        info!("[{}] 初始化完毕", self.nickname);
     }
 
     /// 启动前预处理
@@ -150,15 +132,17 @@ impl Updater {
                         "[{}] {}。将在 {} 秒后重试",
                         self.nickname, err, self.retry_interval
                     );
-                    tokio::time::sleep(Duration::from_secs(self.retry_interval)).await;
+                    sleep(Duration::from_secs(self.retry_interval)).await;
                 }
             };
         }
     }
 
     /// 触发更新
-    async fn update(&mut self) -> Result<String, Error> {
-        let old_details = self.details.as_ref().unwrap();
+    pub async fn update(&mut self) -> Result<String, Error> {
+        let Some(old_details) = self.details.as_ref() else {
+            return Err(Error::uninitialized());
+        };
 
         let new_ip = self.ip_source.ip(self.bind_address).await?;
         if new_ip == old_details.content {
@@ -219,7 +203,9 @@ impl Updater {
 
     /// 更新 Cloudflare DNS 记录
     async fn update_dns_record(&self, new_ip: &IpAddr) -> Result<CloudflareRecordDetails, Error> {
-        let details = self.details.as_ref().unwrap();
+        let Some(details) = self.details.as_ref() else {
+            return Err(Error::uninitialized());
+        };
 
         // 访问 Cloudflare 更新当前 DNS 记录配置
         let body = CloudflareUpdateDNSBody {

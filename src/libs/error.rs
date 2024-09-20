@@ -13,6 +13,10 @@ impl Error {
         Self(Cow::Owned(reason))
     }
 
+    pub fn uninitialized() -> Self {
+        Self(Cow::Borrowed("Updater 未初始化"))
+    }
+
     pub fn read_configuration_failure<E>(err: E) -> Self
     where
         E: std::error::Error,

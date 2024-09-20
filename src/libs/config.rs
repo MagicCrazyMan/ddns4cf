@@ -1,4 +1,4 @@
-use std::{borrow::Cow, env, fs, net::IpAddr, path::Path};
+use std::{borrow::Cow, env, fs, net::IpAddr, path::Path, sync::Arc};
 
 use reqwest::Url;
 use serde::{
@@ -6,6 +6,7 @@ use serde::{
     Deserialize,
 };
 use smallvec::SmallVec;
+use tokio::sync::Mutex;
 
 use super::{
     args,
@@ -71,7 +72,7 @@ impl Configuration {
     }
 
     /// 通过当前配置内容创建 [`Updater`] 列表
-    pub fn create_updaters(&self) -> SmallVec<[Updater; 4]> {
+    pub fn create_updaters(&self) -> SmallVec<[Arc<Mutex<Updater>>; 4]> {
         let mut updaters = SmallVec::new();
         self.accounts().iter().for_each(|account| {
             account.domains().iter().for_each(|domain| {
@@ -90,7 +91,7 @@ impl Configuration {
                     self.proxy(),
                 );
 
-                updaters.push(updater);
+                updaters.push(Arc::new(Mutex::new(updater)));
             })
         });
 
