@@ -202,13 +202,13 @@ async fn start_schedulers(
 }
 
 async fn start() -> Result<(), Error> {
+    let updaters = config::configuration()?.create_updaters();
+
     info!("启动 ddns4cf，版本: {}", env!("CARGO_PKG_VERSION"));
 
     let (termination_tx, mut termination_rx) = broadcast::channel::<()>(1);
     listen_ctrl_c(termination_tx.clone());
     listen_signal(termination_tx.clone());
-
-    let updaters = config::configuration()?.create_updaters();
 
     // 初始化
     tokio::select! {
