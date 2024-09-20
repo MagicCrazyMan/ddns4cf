@@ -37,14 +37,14 @@ fn setup_logger() {
 }
 
 async fn start() -> Result<(), Error> {
-    let configuration = config::configuration()?;
-    let updaters = configuration.create_updaters();
-
-    let handlers = updaters.into_iter().map(|mut updater| {
-        tokio::spawn(async move {
-            updater.start().await;
-        })
-    });
+    let handlers = config::configuration()?
+        .create_updaters()
+        .into_iter()
+        .map(|mut updater| {
+            tokio::spawn(async move {
+                updater.start().await;
+            })
+        });
 
     join_all(handlers).await;
 
