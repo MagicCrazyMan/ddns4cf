@@ -145,7 +145,7 @@ fn listen_os_suspend_resume() -> Option<(Sender<NotifyKind>, OsSuspendResumeUnre
 
 fn send_terminate(termination_tx: Sender<()>) -> Result<(), SendError<()>> {
     termination_tx.send(())?;
-    info!("正在停止 Updater...");
+    info!("正在停止所有 Schedulers...");
     Ok(())
 }
 
@@ -202,6 +202,8 @@ async fn start_schedulers(
 }
 
 async fn start() -> Result<(), Error> {
+    info!("启动 ddns4cf，版本: {}", env!("CARGO_PKG_VERSION"));
+
     let (termination_tx, mut termination_rx) = broadcast::channel::<()>(1);
     listen_ctrl_c(termination_tx.clone());
     listen_signal(termination_tx.clone());
