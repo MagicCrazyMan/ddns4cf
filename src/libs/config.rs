@@ -1,6 +1,6 @@
 use std::{borrow::Cow, env, fs, net::IpAddr, path::Path, sync::Arc};
 
-use reqwest::Url;
+use reqwest::{Client, Url};
 use serde::{
     de::{self, Visitor},
     Deserialize,
@@ -71,8 +71,20 @@ impl Configuration {
         self.ip_source.as_ref().unwrap_or(&IpSourceType::IpIp)
     }
 
+    // 创建 Cloudflare HTTP reqwest client.
+    fn create_cf_http_client(&self) -> Client {
+        let mut builder = reqwest::ClientBuilder::new().local_address(self.bind_address);
+        if let Some(proxy) = self.proxy() {
+            builder = builder.proxy(proxy);
+        };
+
+        builder.build().unwrap()
+    }
+
     /// 通过当前配置内容创建 [`Updater`] 列表
     pub fn create_updaters(&self) -> SmallVec<[Arc<Mutex<Updater>>; 4]> {
+        let cf_http_client = self.create_cf_http_client();
+
         let mut updaters = SmallVec::new();
         self.accounts().iter().for_each(|account| {
             account.domains().iter().for_each(|domain| {
@@ -88,7 +100,7 @@ impl Configuration {
                     domain.zone_id(),
                     domain.fresh_interval().unwrap_or(self.fresh_interval()),
                     domain.retry_interval().unwrap_or(self.retry_interval()),
-                    self.proxy(),
+                    cf_http_client.clone(),
                 );
 
                 updaters.push(Arc::new(Mutex::new(updater)));

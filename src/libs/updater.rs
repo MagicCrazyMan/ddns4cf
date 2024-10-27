@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt::Display, net::IpAddr, time::Duration};
 
 use log::{error, info};
-use reqwest::{header, ClientBuilder};
+use reqwest::{header, Client};
 use tokio::time::sleep;
 
 use super::{error::Error, source::IpSource};
@@ -62,8 +62,8 @@ pub struct Updater {
     pub token: String,
     pub id: String,
     pub zone_id: String,
+    cf_http_client: Client,
     ip_source: Box<dyn IpSource>,
-    proxy: Option<reqwest::Proxy>,
     details: Option<CloudflareRecordDetails>,
 }
 
@@ -78,7 +78,7 @@ impl Updater {
         zone_id: &str,
         refresh_interval: u64,
         retry_interval: u64,
-        proxy: Option<reqwest::Proxy>,
+        cf_http_client: Client,
     ) -> Self {
         Self {
             bind_address,
@@ -89,7 +89,7 @@ impl Updater {
             zone_id: zone_id.to_string(),
             refresh_interval,
             retry_interval,
-            proxy,
+            cf_http_client,
             details: None,
         }
     }
@@ -165,8 +165,7 @@ impl Updater {
     async fn retrieve_dns_details(&self) -> Result<CloudflareRecordDetails, Error> {
         // 访问 Cloudflare 获取当前 DNS 记录配置
         let mut bytes = self
-            .default_client_builder()
-            .build()?
+            .cf_http_client
             .get(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
                 self.zone_id, self.id
@@ -217,8 +216,7 @@ impl Updater {
         };
 
         let mut bytes = self
-            .default_client_builder()
-            .build()?
+            .cf_http_client
             .put(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
                 self.zone_id, self.id
@@ -253,15 +251,5 @@ impl Updater {
                 Err(Error::cloudflare_update_failure(message))
             }
         }
-    }
-
-    /// 默认 reqwest 请求构造器
-    fn default_client_builder(&self) -> ClientBuilder {
-        let mut builder = reqwest::ClientBuilder::new().local_address(self.bind_address);
-        if let Some(proxy) = &self.proxy {
-            builder = builder.proxy(proxy.clone());
-        }
-
-        builder
     }
 }
