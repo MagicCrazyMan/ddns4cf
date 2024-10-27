@@ -270,7 +270,7 @@ dependencies = [
 
 [[package]]
 name = "ddns4cf"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "async-trait",
  "chrono",
