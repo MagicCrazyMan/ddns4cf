@@ -1,5 +1,6 @@
 use std::{borrow::Cow, fmt::Display, net::IpAddr, time::Duration};
 
+use bytes::Buf;
 use log::{error, info};
 use reqwest::{header, Client};
 use tokio::time::sleep;
@@ -164,7 +165,7 @@ impl Updater {
     /// 尝试获取 Cloudflare DNS 记录详情
     async fn retrieve_dns_details(&self) -> Result<CloudflareRecordDetails, Error> {
         // 访问 Cloudflare 获取当前 DNS 记录配置
-        let mut bytes = self
+        let bytes = self
             .cf_http_client
             .get(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
@@ -178,11 +179,10 @@ impl Updater {
             .bytes()
             .await
             .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?
-            .to_vec();
+            .reader();
 
-        let details =
-            simd_json::from_slice::<CloudflareResponse<CloudflareRecordDetails>>(&mut bytes)
-                .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
+        let details: CloudflareResponse<CloudflareRecordDetails> = simd_json::from_reader(bytes)
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
         match (details.success, details.result) {
             (true, Some(details)) => Ok(details),
@@ -215,7 +215,7 @@ impl Updater {
             proxied: details.proxied,
         };
 
-        let mut bytes = self
+        let bytes = self
             .cf_http_client
             .put(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
@@ -231,11 +231,10 @@ impl Updater {
             .bytes()
             .await
             .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?
-            .to_vec();
+            .reader();
 
-        let details =
-            simd_json::from_slice::<CloudflareResponse<CloudflareRecordDetails>>(&mut bytes)
-                .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
+        let details: CloudflareResponse<CloudflareRecordDetails> = simd_json::from_reader(bytes)
+            .or_else(|err| Err(Error::cloudflare_deserialized_failure(err)))?;
 
         match (details.success, details.result) {
             (true, Some(details)) => Ok(details),
