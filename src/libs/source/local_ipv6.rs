@@ -204,7 +204,7 @@ impl IpSource for LocalIPv6 {
         }
         #[cfg(not(any(target_os = "linux", target_os = "windows")))]
         {
-            unreachable!()
+            unimplemented!()
         }
     }
 
