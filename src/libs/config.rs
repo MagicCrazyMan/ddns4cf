@@ -16,9 +16,9 @@ use super::{
 };
 
 /// 默认刷新间隔
-static DEFAULT_FRESH_INTERVAL_SECONDS: u64 = 15 * 60;
+const DEFAULT_FRESH_INTERVAL_SECONDS: u64 = 15 * 60;
 /// 默认全局出现错误时重试间隔
-static DEFAULT_RETRY_INTERVAL_SECONDS: u64 = 5 * 60;
+const DEFAULT_RETRY_INTERVAL_SECONDS: u64 = 5 * 60;
 
 /// 配置内容数据结构
 ///
@@ -431,7 +431,7 @@ impl<'de> Deserialize<'de> for Proxy {
 //     }
 // }
 
-static DEFAULT_CONFIGURATION_NAME: &'static str = "config.json5";
+const DEFAULT_CONFIGURATION_NAME: &'static str = "config.json5";
 
 /// 获取配置数据
 pub fn configuration() -> Result<Configuration, Error> {
