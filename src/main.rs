@@ -29,10 +29,9 @@ use windows::Win32::{
 
 mod libs;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     setup_logger();
-    match start().await {
+    match start() {
         Ok(_) => {}
         Err(err) => error!("{}", err),
     }
@@ -201,25 +200,51 @@ async fn start_schedulers(
     join_all(handlers).await;
 }
 
-async fn start() -> Result<(), Error> {
+fn start() -> Result<(), Error> {
+    info!("启动 ddns4cf，版本: {}", env!("CARGO_PKG_VERSION"));
+    info!("程序运行 pid：{}", std::process::id());
+
     let updaters = config::configuration()?.create_updaters();
 
-    info!("启动 ddns4cf，版本: {}", env!("CARGO_PKG_VERSION"));
+    if updaters.len() == 0 {
+        info!("未设置需要更新的域名信息，ddns4cf 已中止");
+    } else {
+        let updater_len = updaters.len();
 
-    let (termination_tx, mut termination_rx) = broadcast::channel::<()>(1);
-    listen_ctrl_c(termination_tx.clone());
-    listen_signal(termination_tx.clone());
+        let main = async move {
+            let (termination_tx, mut termination_rx) = broadcast::channel::<()>(1);
+            listen_ctrl_c(termination_tx.clone());
+            listen_signal(termination_tx.clone());
 
-    // 初始化
-    tokio::select! {
-        _ = init_updaters(&updaters) => {}
-        _ = termination_rx.recv() => {
-            return Ok(());
+            // 初始化
+            tokio::select! {
+                _ = init_updaters(&updaters) => {}
+                _ = termination_rx.recv() => return,
+            }
+
+            // 启动调度器
+            start_schedulers(updaters, termination_tx).await;
+        };
+
+        if updater_len == 1 {
+            info!("正在使用单线程模式运行");
+
+            // 如果只有一个 Updater，使用单线程运行时
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(main);
+        } else {
+            info!("正在使用多线程模式运行");
+
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(main);
         }
     }
-
-    // 启动调度器
-    start_schedulers(updaters, termination_tx).await;
 
     Ok(())
 }
