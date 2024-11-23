@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use super::{
     args,
     error::Error,
-    source::{ipip::IpIp, standalone::Standalone, IpSource},
+    source::{standalone::Standalone, IpSource},
     updater::Updater,
 };
 
@@ -37,7 +37,7 @@ pub struct Configuration {
     retry_interval: Option<u64>,
     /// 全局 IP 地址来源。默认为 `0`
     ///
-    /// - `0`：IpIp
+    /// - `0`：IpIp(废弃，已移除)
     /// - `1`：独立服务器
     /// - `2`：基于 Linux ip 命令查询（仅限 linux 系统）
     ip_source: Option<IpSourceType>,
@@ -147,10 +147,7 @@ pub enum IpSourceType {
 }
 
 impl IpSourceType {
-    fn to_ip_source(&self) -> Box<dyn IpSource> {
-        match self {
-            IpSourceType::IpIp => Box::new(IpIp::new()),
-            IpSourceType::Standalone(socket_addr) => Box::new(Standalone::new(socket_addr.clone())),
+            IpSourceType::IpIp => unreachable!(),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             IpSourceType::LocalIPv6(interface_name) => {
                 Box::new(super::source::local_ipv6::LocalIPv6::new(
@@ -172,11 +169,9 @@ impl<'de> Deserialize<'de> for IpSourceType {
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 #[cfg(any(target_os = "linux", target_os = "windows"))]
-                formatter.write_str(
-                    "可用的 IP 地址来源方式为：0(IpIp)、 1(独立服务器) 或 2(Local IPv6)",
-                )?;
+                formatter.write_str("可用的 IP 地址来源方式为：1(独立服务器) 或 2(Local IPv6)")?;
                 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-                formatter.write_str("可用的 IP 地址来源方式为：0(IpIp) 或 1(独立服务器)")?;
+                formatter.write_str("可用的 IP 地址来源方式为：1(独立服务器)")?;
 
                 Ok(())
             }
@@ -186,7 +181,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
                 E: de::Error,
             {
                 match v {
-                    0 => Ok(IpSourceType::IpIp),
+                    0 => Err(E::custom("IP 来源方式 0(IpIp) 已废弃，请使用其他地址来源")),
                     1 => Err(E::custom(
                         "IP 来源方式 1(独立服务器) 必须指定服务器访问地址",
                     )),

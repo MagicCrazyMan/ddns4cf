@@ -1,4 +1,3 @@
-pub mod ipip;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod local_ipv6;
 pub mod standalone;
