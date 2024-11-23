@@ -204,7 +204,7 @@ fn start() -> Result<(), Error> {
     info!("启动 ddns4cf，版本: {}", env!("CARGO_PKG_VERSION"));
     info!("程序运行 pid：{}", std::process::id());
 
-    let updaters = config::configuration()?.create_updaters();
+    let updaters = config::configuration()?.create_updaters()?;
 
     if updaters.len() == 0 {
         info!("未设置需要更新的域名信息，ddns4cf 已中止");

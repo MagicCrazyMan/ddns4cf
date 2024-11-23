@@ -193,7 +193,7 @@ impl LocalIPv6 {
 
 #[async_trait]
 impl IpSource for LocalIPv6 {
-    async fn ip(&self, _: Option<IpAddr>) -> Result<IpAddr, Error> {
+    async fn ip(&self) -> Result<IpAddr, Error> {
         #[cfg(target_os = "linux")]
         {
             return self.ip_linux().await;
@@ -233,7 +233,7 @@ mod tests {
     async fn test_local_ipv6() -> Result<(), Error> {
         let ip_source = LocalIPv6::new(Some(Cow::Borrowed("enp2s0")));
 
-        let ip = ip_source.ip(None).await?;
+        let ip = ip_source.ip().await?;
         println!("{}", ip);
 
         Ok(())

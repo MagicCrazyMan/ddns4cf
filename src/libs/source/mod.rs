@@ -16,5 +16,5 @@ pub trait IpSource: Debug + Send + Sync {
     fn info(&self) -> Option<Cow<'_, str>>;
 
     /// 获取当前运行机器所处于的 IPv4 地址
-    async fn ip(&self, bind_address: Option<IpAddr>) -> Result<IpAddr, Error>;
+    async fn ip(&self) -> Result<IpAddr, Error>;
 }

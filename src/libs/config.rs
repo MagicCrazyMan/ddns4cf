@@ -82,18 +82,21 @@ impl Configuration {
     }
 
     /// 通过当前配置内容创建 [`Updater`] 列表
-    pub fn create_updaters(&self) -> SmallVec<[Arc<Mutex<Updater>>; 4]> {
+    pub fn create_updaters(&self) -> Result<SmallVec<[Arc<Mutex<Updater>>; 4]>, Error> {
         let cf_http_client = self.create_cf_http_client();
 
         let mut updaters = SmallVec::new();
-        self.accounts().iter().for_each(|account| {
-            account.domains().iter().for_each(|domain| {
+        self.accounts().iter().try_for_each(|account| {
+            account.domains().iter().try_for_each(|domain| {
+                let bind_address = domain.bind_address().or(self.bind_address());
+                let ip_source = domain
+                    .ip_source_type()
+                    .unwrap_or(self.ip_source_type())
+                    .to_ip_source(&bind_address)?;
+
                 let updater = Updater::new(
-                    domain.bind_address().or(self.bind_address()),
-                    domain
-                        .ip_source()
-                        .unwrap_or(self.ip_source_type())
-                        .to_ip_source(),
+                    bind_address,
+                    ip_source,
                     domain.nickname(),
                     account.token(),
                     domain.id(),
@@ -104,10 +107,14 @@ impl Configuration {
                 );
 
                 updaters.push(Arc::new(Mutex::new(updater)));
-            })
-        });
 
-        updaters
+                Ok::<(), Error>(())
+            })?;
+
+            Ok::<(), Error>(())
+        })?;
+
+        Ok(updaters)
     }
 
     /// 获取全局出现错误时重试间隔，单位秒。默认为 300 秒后。
@@ -147,14 +154,21 @@ pub enum IpSourceType {
 }
 
 impl IpSourceType {
+    fn to_ip_source(&self, bind_address: &Option<IpAddr>) -> Result<Box<dyn IpSource>, Error> {
+        let ip_source: Box<dyn IpSource> = match self {
             IpSourceType::IpIp => unreachable!(),
+            IpSourceType::Standalone(url) => {
+                Box::new(Standalone::new(url.clone(), bind_address.clone())?)
+            }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             IpSourceType::LocalIPv6(interface_name) => {
                 Box::new(super::source::local_ipv6::LocalIPv6::new(
                     interface_name.clone().map(|name| Cow::Owned(name)),
                 ))
             }
-        }
+        };
+
+        Ok(ip_source)
     }
 }
 
@@ -326,7 +340,7 @@ impl Domain {
     }
 
     /// 获取 IP 来源方式
-    pub fn ip_source(&self) -> Option<&IpSourceType> {
+    pub fn ip_source_type(&self) -> Option<&IpSourceType> {
         self.ip_source.as_ref()
     }
 }

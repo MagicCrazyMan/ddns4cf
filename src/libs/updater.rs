@@ -145,7 +145,7 @@ impl Updater {
             return Err(Error::uninitialized());
         };
 
-        let new_ip = self.ip_source.ip(self.bind_address).await?;
+        let new_ip = self.ip_source.ip().await?;
         if new_ip == old_details.content {
             Ok(format!("IP 地址未发生变化，当前地址为：{}", new_ip))
         } else {
