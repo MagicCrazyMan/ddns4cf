@@ -67,8 +67,8 @@ impl Configuration {
     }
 
     /// 获取 IP 来源方式
-    pub fn ip_source_type(&self) -> &IpSourceType {
-        self.ip_source.as_ref().unwrap_or(&IpSourceType::IpIp)
+    pub fn ip_source_type(&self) -> Option<&IpSourceType> {
+        self.ip_source.as_ref()
     }
 
     // 创建 Cloudflare HTTP reqwest client.
@@ -91,7 +91,11 @@ impl Configuration {
                 let bind_address = domain.bind_address().or(self.bind_address());
                 let ip_source = domain
                     .ip_source_type()
-                    .unwrap_or(self.ip_source_type())
+                    .or(self.ip_source_type())
+                    .ok_or(Error::new_string(format!(
+                        "域名 {} 未指定 IP 来源方式",
+                        domain.nickname
+                    )))?
                     .to_ip_source(&bind_address)?;
 
                 let updater = Updater::new(
@@ -142,12 +146,12 @@ impl Configuration {
 
 /// 可用的 IP 地址来源方式
 ///
-/// - `0`：IpIp
+/// - `0`：IpIp(废弃，已移除)
 /// - `1`：独立服务器
 /// - `2`：基于 Linux ip 命令查询（仅限 linux 系统）
 #[derive(Debug, Clone)]
 pub enum IpSourceType {
-    IpIp,
+    // IpIp,
     Standalone(Url),
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     LocalIPv6(Option<String>),
@@ -156,7 +160,6 @@ pub enum IpSourceType {
 impl IpSourceType {
     fn to_ip_source(&self, bind_address: &Option<IpAddr>) -> Result<Box<dyn IpSource>, Error> {
         let ip_source: Box<dyn IpSource> = match self {
-            IpSourceType::IpIp => unreachable!(),
             IpSourceType::Standalone(url) => {
                 Box::new(Standalone::new(url.clone(), bind_address.clone())?)
             }
@@ -209,6 +212,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
             where
                 A: de::MapAccess<'de>,
             {
+                println!("11111");
                 let mut r#type = None;
                 let mut server = None;
                 let mut interface = None;
@@ -227,7 +231,9 @@ impl<'de> Deserialize<'de> for IpSourceType {
                 };
 
                 match r#type {
-                    0 => Ok(IpSourceType::IpIp),
+                    0 => Err(de::Error::custom(
+                        "IP 来源方式 0(IpIp) 已废弃，请使用其他地址来源",
+                    )),
                     1 => match server {
                         Some(server) => {
                             let Ok(server) = server.parse::<Url>() else {
@@ -294,7 +300,7 @@ pub struct Domain {
     retry_interval: Option<u64>,
     /// 当前机器运行环境的 IP 地址来源。
     ///
-    /// - `0`：IpIp
+    /// - `0`：IpIp(废弃，已移除)
     /// - `1`：独立服务器
     /// - `2`：基于 Linux ip 命令查询（仅限 linux 系统）
     ///
@@ -460,10 +466,8 @@ fn read_configuration<P>(path: P) -> Result<Configuration, Error>
 where
     P: AsRef<Path>,
 {
-    let text =
-        fs::read_to_string(path).or_else(|err| Err(Error::read_configuration_failure(err)))?;
-    Ok(
-        json5::from_str(text.as_str())
-            .or_else(|err| Err(Error::read_configuration_failure(err)))?,
-    )
+    let text = fs::read_to_string(path.as_ref())
+        .or_else(|err| Err(Error::read_configuration_failure(err, path.as_ref())))?;
+    Ok(json5::from_str(text.as_str())
+        .or_else(|err| Err(Error::read_configuration_failure(err, path.as_ref())))?)
 }

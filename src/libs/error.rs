@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Display};
+use std::{borrow::Cow, fmt::Display, path::Path};
 
 /// 字符串化错误，仅用于打印异常内容，不用作任何判断。
 #[derive(Debug, Clone)]
@@ -17,11 +17,11 @@ impl Error {
         Self(Cow::Borrowed("Updater 未初始化"))
     }
 
-    pub fn read_configuration_failure<E>(err: E) -> Self
+    pub fn read_configuration_failure<E>(err: E, path: &Path) -> Self
     where
         E: std::error::Error,
     {
-        Self::new_string(format!("配置文件读取失败：{}", err))
+        Self::new_string(format!("配置文件读取失败：{} {}", err, path.display()))
     }
 
     pub fn cloudflare_network_failure<E>(err: E) -> Self
