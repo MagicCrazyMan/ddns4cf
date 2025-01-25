@@ -152,7 +152,7 @@ impl LocalIPv6 {
             )
         });
 
-        let addresses = serde_json::from_reader::<_, Vec<NetIPAddress>>(output.as_bytes())
+        let addresses = simd_json::from_reader::<_, Vec<NetIPAddress>>(output.as_bytes())
             .unwrap_or(EMPTY_LIST);
 
         let address = addresses
