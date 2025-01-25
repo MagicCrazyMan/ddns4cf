@@ -9,20 +9,20 @@ use super::{error::Error, source::IpSource};
 
 /// Cloudflare API 响应
 #[derive(serde::Deserialize, Debug)]
-struct CloudflareResponse<'a, T> {
+struct CloudflareResponse<T> {
     success: bool,
-    errors: Option<Vec<CloudflareMessage<'a>>>,
+    errors: Option<Vec<CloudflareMessage>>,
     result: Option<T>,
 }
 
 /// Cloudflare API 消息
 #[derive(serde::Deserialize, Debug)]
-struct CloudflareMessage<'a> {
+struct CloudflareMessage {
     code: u32,
-    message: Cow<'a, str>,
+    message: String,
 }
 
-impl<'a> Display for CloudflareMessage<'a> {
+impl Display for CloudflareMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "Cloudflare 响应代码 {}：{}",
@@ -30,8 +30,6 @@ impl<'a> Display for CloudflareMessage<'a> {
         ))
     }
 }
-
-impl<'a> std::error::Error for CloudflareMessage<'a> {}
 
 /// Cloudflare API 域名详情
 #[derive(serde::Deserialize, Debug)]

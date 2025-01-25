@@ -45,15 +45,15 @@ impl LocalIPv6 {
 
         #[derive(Deserialize)]
         struct Interface<'a> {
-            ifname: Cow<'a, str>,
-            operstate: Cow<'a, str>,
+            ifname: &'a str,
+            operstate: &'a str,
             addr_info: Vec<AddrInfo<'a>>,
         }
 
         #[derive(Deserialize)]
         struct AddrInfo<'a> {
             local: Ipv6Addr,
-            scope: Cow<'a, str>,
+            scope: &'a str,
             #[serde(default)]
             temporary: bool,
             #[serde(default)]
@@ -89,11 +89,11 @@ impl LocalIPv6 {
                     Some(interface_name) => &interface.ifname == &*interface_name,
                     None => true,
                 };
-                matched_name && &interface.operstate == "UP"
+                matched_name && interface.operstate == "UP"
             })
             .and_then(|interface| {
                 interface.addr_info.into_iter().find(|info| {
-                    &info.scope == "global"
+                    info.scope == "global"
                         && !info.temporary
                         && info.dynamic
                         && info.mngtmpaddr
@@ -115,7 +115,7 @@ impl LocalIPv6 {
         #[derive(Serialize, Deserialize)]
         struct NetIPAddress<'a> {
             #[serde(rename = "IPAddress")]
-            ip_address: Cow<'a, str>,
+            ip_address: &'a str,
         }
 
         const EMPTY_LIST: Vec<NetIPAddress> = Vec::new();
@@ -145,15 +145,16 @@ impl LocalIPv6 {
             Ok(output) => output,
             Err(err) => return Err(Error::new_string(format!("执行命令时发生错误：{err}"))),
         };
-        let output = String::from_utf16_lossy(unsafe {
+        let mut output = String::from_utf16_lossy(unsafe {
             std::slice::from_raw_parts(
                 output.stdout.as_ptr() as *const u16,
                 output.stdout.len() / 2,
             )
         });
 
-        let addresses = simd_json::from_reader::<_, Vec<NetIPAddress>>(output.as_bytes())
-            .unwrap_or(EMPTY_LIST);
+        let addresses = unsafe {
+            simd_json::from_str::<Vec<NetIPAddress>>(output.as_mut_str()).unwrap_or(EMPTY_LIST)
+        };
 
         let address = addresses
             .into_iter()
@@ -203,8 +204,6 @@ impl IpSource for LocalIPv6 {
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
-
     use crate::libs::{
         error::Error,
         source::{local_ipv6::LocalIPv6, IpSource},
