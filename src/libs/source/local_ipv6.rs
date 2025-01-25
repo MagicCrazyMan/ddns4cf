@@ -28,7 +28,7 @@ use super::IpSource;
 ///
 /// 使用基于 Powershell 的命令 `Get-NetIPAddress -AddressFamily IPv6 -PolicyStore ActiveStore [-InterfaceAlias <interface_name>] | ConvertTo-JSON`。
 ///
-/// 将会使用非本地的地址
+/// 将会使用首个非本地、非回环地址、非多播、非未指定的地址
 #[derive(Debug)]
 pub struct LocalIPv6(Option<Cow<'static, str>>);
 
