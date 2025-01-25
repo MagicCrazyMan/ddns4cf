@@ -148,7 +148,7 @@ impl Configuration {
 ///
 /// - `0`：IpIp(废弃，已移除)
 /// - `1`：独立服务器
-/// - `2`：基于 Linux ip 命令查询（仅限 linux 系统）
+/// - `2`：本地 IPv6 查询
 #[derive(Debug, Clone)]
 pub enum IpSourceType {
     // IpIp,
