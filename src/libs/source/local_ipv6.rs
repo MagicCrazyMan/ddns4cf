@@ -12,7 +12,9 @@ use super::IpSource;
 /// Linux 和 Windows 专用，使用本机命令获取 IPv6 地址。
 /// 可以指定需要获取的网卡接口的名称，若未指定，则使用第一个符合匹配要求的 IPv6 地址。
 ///
-/// 针对 Linux 系统，使用 `ip -6 -j addr` 命令，对于所输出的结果中匹配以下规则：
+/// - 针对 Linux 系统
+///
+/// 使用 `ip -6 -j addr` 命令，对于所输出的结果中匹配以下规则：
 ///
 /// - `operstate` 为 `UP`
 /// - `scope` 为 `global`
@@ -22,11 +24,11 @@ use super::IpSource;
 ///
 /// 将会使用首个匹配规则的地址
 ///
-/// 针对 Windows 系统，使用 `netsh interface ipv6 show addresses` 命令，对于所输出的结果中匹配以下正则表达式：
+/// - 针对 Windows 系统
 ///
-/// `^Public\s+\w+\s+\S+\s+\S+\s(\S+)$`
+/// 使用基于 Powershell 的命令 `Get-NetIPAddress -AddressFamily IPv6 -PolicyStore ActiveStore [-InterfaceAlias <interface_name>] | ConvertTo-JSON`。
 ///
-/// 将会使用首个匹配规则的地址
+/// 将会使用非本地的地址
 #[derive(Debug)]
 pub struct LocalIPv6(Option<Cow<'static, str>>);
 
@@ -105,89 +107,68 @@ impl LocalIPv6 {
 
     #[cfg(target_os = "windows")]
     async fn ip_windows(&self) -> Result<IpAddr, Error> {
-        use std::{io::Cursor, sync::OnceLock};
+        use std::str::FromStr;
 
-        use regex::Regex;
-        use tokio::{io::AsyncBufReadExt, process::Command};
+        use serde::{Deserialize, Serialize};
+        use tokio::process::Command;
 
-        let output = Command::new("netsh")
-            .arg("interface")
-            .arg("ipv6")
-            .arg("show")
-            .arg("addresses")
-            .output()
-            .await;
+        #[derive(Serialize, Deserialize)]
+        struct NetIPAddress<'a> {
+            #[serde(rename = "IPAddress")]
+            ip_address: Cow<'a, str>,
+        }
 
+        const EMPTY_LIST: Vec<NetIPAddress> = Vec::new();
+
+        let mut command = Command::new("powershell");
+        command
+            .arg("-Command")
+            .arg("$OutputEncoding")
+            .arg("=")
+            .arg("[System.Console]::OutputEncoding")
+            .arg("=")
+            .arg("[System.Console]::InputEncoding")
+            .arg("=")
+            .arg("[System.Text.Encoding]::Unicode;")
+            .arg("Get-NetIPAddress")
+            .arg("-AddressFamily")
+            .arg("IPv6")
+            .arg("-PolicyStore")
+            .arg("ActiveStore");
+        if let Some(interface_name) = self.0.as_ref() {
+            command.arg("-InterfaceAlias").arg(interface_name.as_ref());
+        };
+        command.arg("| ConvertTo-JSON");
+
+        let output = command.output().await;
         let output = match output {
             Ok(output) => output,
             Err(err) => return Err(Error::new_string(format!("执行命令时发生错误：{err}"))),
         };
+        let output = String::from_utf16_lossy(unsafe {
+            std::slice::from_raw_parts(
+                output.stdout.as_ptr() as *const u16,
+                output.stdout.len() / 2,
+            )
+        });
 
-        let output = match String::from_utf8(output.stdout) {
-            Ok(output) => output,
-            Err(err) => return Err(Error::new_string(format!("解析输出时发生错误：{err}"))),
-        };
+        let addresses = serde_json::from_reader::<_, Vec<NetIPAddress>>(output.as_bytes())
+            .unwrap_or(EMPTY_LIST);
 
-        const INTERFACE_NAME_EXTRACT_REGEX: OnceLock<Regex> = OnceLock::new();
-        const PUBLIC_IPV6_ADDRESS_EXTRACT_REGEX: OnceLock<Regex> = OnceLock::new();
+        let address = addresses
+            .into_iter()
+            .filter_map(|NetIPAddress { ip_address }| Ipv6Addr::from_str(&ip_address).ok())
+            .filter(|address| {
+                !address.is_loopback()
+                    && !address.is_unspecified()
+                    && !address.is_multicast()
+                    && !address.is_unicast_link_local()
+                    && !address.is_unique_local()
+            })
+            .next()
+            .map(|address| IpAddr::V6(address));
 
-        let cursor = Cursor::new(output);
-        let mut lines = cursor.lines();
-        let mut met_interface = false;
-        let mut ip = None;
-        while let Some(line) = lines
-            .next_line()
-            .await
-            .or_else(|err| Err(Error::new_string(format!("读取行时发生错误：{err}"))))?
-        {
-            if line.starts_with("Interface") {
-                match self.0.as_ref() {
-                    Some(interface_name) => {
-                        let name = INTERFACE_NAME_EXTRACT_REGEX
-                            .get_or_init(|| Regex::new(r"^Interface \d+: (.*)$").unwrap())
-                            .captures(&*line)
-                            .and_then(|captures| captures.get(1));
-
-                        match name {
-                            Some(name) => {
-                                if interface_name == name.as_str() {
-                                    met_interface = true;
-                                } else {
-                                    met_interface = false;
-                                }
-                            }
-                            None => {
-                                met_interface = false;
-                            }
-                        }
-                    }
-                    None => {
-                        met_interface = true;
-                    }
-                }
-            } else if line.starts_with("Public") {
-                if !met_interface {
-                    continue;
-                }
-
-                let Some(matched) = PUBLIC_IPV6_ADDRESS_EXTRACT_REGEX
-                    .get_or_init(|| Regex::new(r"^Public\s+\w+\s+\S+\s+\S+\s(\S+)$").unwrap())
-                    .captures(&*line)
-                    .and_then(|captures| captures.get(1))
-                else {
-                    continue;
-                };
-
-                let Ok(parsed) = matched.as_str().parse::<Ipv6Addr>() else {
-                    continue;
-                };
-
-                ip = Some(IpAddr::V6(parsed));
-                break;
-            }
-        }
-
-        ip.ok_or(Error::new_str("未匹配到合法的 IPv6 地址"))
+        address.ok_or(Error::new_str("未匹配到合法的 IPv6 地址"))
     }
 }
 
@@ -231,7 +212,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_local_ipv6() -> Result<(), Error> {
-        let ip_source = LocalIPv6::new(Some(Cow::Borrowed("enp2s0")));
+        let ip_source = LocalIPv6::new(None);
 
         let ip = ip_source.ip().await?;
         println!("{}", ip);
