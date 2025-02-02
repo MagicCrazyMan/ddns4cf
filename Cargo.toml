@@ -1,6 +1,6 @@
 [package]
 name = "ddns4cf"
-version = "0.3.11"
+version = "0.3.12"
 edition = "2021"
 authors = ["Magic Crazy Man"]
 description = "Dynamic Domain Naming Service for Cloudflare"
