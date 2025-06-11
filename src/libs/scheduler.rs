@@ -82,6 +82,7 @@ impl LoopingScheduler {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NotifyKind {
+    #[allow(unused)]
     OsSuspendResume,
 }
 
