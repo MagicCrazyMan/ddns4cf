@@ -7,8 +7,7 @@ use libs::{
     scheduler::{LoopingScheduler, NotifyKind, NotifyScheduler},
     updater::Updater,
 };
-#[allow(unused_imports)]
-use log::{error, info, warn};
+use log::{error, info};
 use smallvec::SmallVec;
 use tokio::{
     signal,
