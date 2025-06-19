@@ -86,7 +86,7 @@ impl LocalIPv6 {
             .into_iter()
             .find(|interface| {
                 let matched_name = match self.0.as_ref() {
-                    Some(interface_name) => &interface.ifname == &*interface_name,
+                    Some(interface_name) => interface.ifname == interface_name.as_str(),
                     None => true,
                 };
                 matched_name && interface.operstate == "UP"
