@@ -15,6 +15,7 @@ use tokio::{
         broadcast::{self, error::SendError, Sender},
         Mutex,
     },
+    task::JoinHandle,
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::{
@@ -174,7 +175,7 @@ async fn start_schedulers(
     updaters: SmallVec<[Arc<Mutex<Updater>>; 4]>,
     termination_tx: Sender<()>,
 ) {
-    let mut handlers = Vec::new();
+    let mut handlers = SmallVec::<[JoinHandle<()>; 5]>::with_capacity(updaters.len() + 1);
 
     // 启动循环更新器
     {
