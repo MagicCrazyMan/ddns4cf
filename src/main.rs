@@ -70,7 +70,7 @@ impl OsSuspendResumeUnregister {
         unsafe {
             let error = PowerUnregisterSuspendResumeNotification(self.handle);
             if error.is_err() {
-                warn!(
+                log::warn!(
                     "注销 Windows Suspend Resume 通知事件失败。错误代码: {}",
                     error.to_hresult()
                 );
@@ -128,7 +128,7 @@ fn listen_os_suspend_resume() -> Option<(Sender<NotifyKind>, OsSuspendResumeUnre
                 return Some((tx, unregister));
             }
             _ => {
-                warn!(
+                log::warn!(
                     "注册 Windows Suspend Resume 通知事件失败。错误代码: {}",
                     error.to_hresult()
                 );
