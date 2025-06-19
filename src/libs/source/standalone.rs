@@ -70,6 +70,6 @@ impl IpSource for Standalone {
     }
 
     fn info(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Owned(self.url.to_string()))
+        Some(Cow::Borrowed(self.url.as_str()))
     }
 }
