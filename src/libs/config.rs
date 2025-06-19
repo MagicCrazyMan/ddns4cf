@@ -1,4 +1,4 @@
-use std::{env, fs, net::IpAddr, path::Path, sync::Arc};
+use std::{borrow::Cow, env, fs, net::IpAddr, path::Path, sync::Arc};
 
 use reqwest::{Client, Url};
 use serde::{
@@ -216,10 +216,10 @@ impl<'de> Deserialize<'de> for IpSourceType {
                 let mut server = None;
                 let mut interface_name = None;
 
-                while let Some(key) = map.next_key::<&str>()? {
+                while let Some(key) = map.next_key::<String>()? {
                     match &*key {
                         "type" => r#type = Some(map.next_value::<i64>()?),
-                        "server" => server = Some(map.next_value::<&str>()?),
+                        "server" => server = Some(map.next_value::<Cow<'_, str>>()?),
                         "interface" => interface_name = Some(map.next_value::<String>()?),
                         _ => {}
                     }
