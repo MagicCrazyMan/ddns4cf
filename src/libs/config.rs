@@ -101,10 +101,10 @@ impl Configuration {
                 let updater = Updater::new(
                     bind_address,
                     ip_source,
-                    domain.nickname(),
-                    account.token(),
-                    domain.id(),
-                    domain.zone_id(),
+                    Arc::clone(domain.nickname()),
+                    Arc::clone(account.token()),
+                    Arc::clone(domain.id()),
+                    Arc::clone(domain.zone_id()),
                     domain.fresh_interval().unwrap_or(self.fresh_interval()),
                     domain.retry_interval().unwrap_or(self.retry_interval()),
                     cf_http_client.clone(),
@@ -267,15 +267,15 @@ impl<'de> Deserialize<'de> for IpSourceType {
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct Account {
     /// Cloudflare 账号 API token
-    token: String,
+    token: Arc<str>,
     /// Cloudflare 中需要刷新的域名列表
     domains: Vec<Domain>,
 }
 
 impl Account {
     /// 获取 Cloudflare 账号 token
-    pub fn token(&self) -> &str {
-        self.token.as_ref()
+    pub fn token(&self) -> &Arc<str> {
+        &self.token
     }
 
     /// 获取 Cloudflare 中需要刷新的域名列表
@@ -306,11 +306,11 @@ pub struct Domain {
     /// 若未配置该项，则会使用 [`Configuration`] 中 `ip_source` 属性。
     ip_source: Option<IpSourceType>,
     /// 域名昵称，用于输出日志
-    nickname: String,
+    nickname: Arc<str>,
     /// 域名 Cloudflare id
-    id: String,
+    id: Arc<str>,
     /// 域名 Cloudflare zone id
-    zone_id: String,
+    zone_id: Arc<str>,
 }
 
 impl Domain {
@@ -325,18 +325,18 @@ impl Domain {
     }
 
     /// 获取域名昵称，用于输出日志
-    pub fn nickname(&self) -> &str {
-        self.nickname.as_ref()
+    pub fn nickname(&self) -> &Arc<str> {
+        &self.nickname
     }
 
     /// 获取域名 Cloudflare id
-    pub fn id(&self) -> &str {
-        self.id.as_ref()
+    pub fn id(&self) -> &Arc<str> {
+        &self.id
     }
 
     /// 获取域名 Cloudflare zone id
-    pub fn zone_id(&self) -> &str {
-        self.zone_id.as_ref()
+    pub fn zone_id(&self) -> &Arc<str> {
+        &self.zone_id
     }
 
     /// 获取出现错误时重试间隔，单位秒

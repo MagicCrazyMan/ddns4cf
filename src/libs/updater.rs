@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Display, net::IpAddr, time::Duration};
+use std::{borrow::Cow, fmt::Display, net::IpAddr, sync::Arc, time::Duration};
 
 use bytes::Buf;
 use log::{error, info};
@@ -57,10 +57,10 @@ pub struct Updater {
     pub bind_address: Option<IpAddr>,
     pub refresh_interval: u64,
     pub retry_interval: u64,
-    pub nickname: String,
-    pub token: String,
-    pub id: String,
-    pub zone_id: String,
+    pub nickname: Arc<str>,
+    pub token: Arc<str>,
+    pub id: Arc<str>,
+    pub zone_id: Arc<str>,
     cf_http_client: Client,
     ip_source: Box<dyn IpSource>,
     details: Option<CloudflareRecordDetails>,
@@ -71,10 +71,10 @@ impl Updater {
     pub fn new(
         bind_address: Option<IpAddr>,
         ip_source: Box<dyn IpSource>,
-        nickname: &str,
-        token: &str,
-        id: &str,
-        zone_id: &str,
+        nickname: Arc<str>,
+        token: Arc<str>,
+        id: Arc<str>,
+        zone_id: Arc<str>,
         refresh_interval: u64,
         retry_interval: u64,
         cf_http_client: Client,
@@ -82,10 +82,10 @@ impl Updater {
         Self {
             bind_address,
             ip_source,
-            nickname: nickname.to_string(),
-            token: token.to_string(),
-            id: id.to_string(),
-            zone_id: zone_id.to_string(),
+            nickname,
+            token,
+            id,
+            zone_id,
             refresh_interval,
             retry_interval,
             cf_http_client,
