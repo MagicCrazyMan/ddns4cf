@@ -65,7 +65,7 @@ impl IpSource for Standalone {
         self.request().await
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "Standalone Server"
     }
 

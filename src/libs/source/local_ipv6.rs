@@ -190,7 +190,7 @@ impl IpSource for LocalIPv6 {
         }
     }
 
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "Local IPv6"
     }
 
