@@ -1,4 +1,4 @@
-use std::{borrow::Cow, env, fs, net::IpAddr, path::Path, sync::Arc};
+use std::{env, fs, net::IpAddr, path::Path, sync::Arc};
 
 use reqwest::{Client, Url};
 use serde::{
@@ -154,7 +154,7 @@ pub enum IpSourceType {
     // IpIp,
     Standalone(Url),
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    LocalIPv6(Option<String>),
+    LocalIPv6(Option<Arc<String>>),
 }
 
 impl IpSourceType {
@@ -166,7 +166,7 @@ impl IpSourceType {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             IpSourceType::LocalIPv6(interface_name) => {
                 Box::new(super::source::local_ipv6::LocalIPv6::new(
-                    interface_name.clone().map(|name| Cow::Owned(name)),
+                    interface_name.as_ref().map(|name| Arc::clone(name)),
                 ))
             }
         };
@@ -214,13 +214,13 @@ impl<'de> Deserialize<'de> for IpSourceType {
             {
                 let mut r#type = None;
                 let mut server = None;
-                let mut interface = None;
+                let mut interface_name = None;
 
-                while let Some(key) = map.next_key::<Cow<'_, str>>()? {
+                while let Some(key) = map.next_key::<&str>()? {
                     match &*key {
                         "type" => r#type = Some(map.next_value::<i64>()?),
-                        "server" => server = Some(map.next_value::<Cow<'_, str>>()?),
-                        "interface" => interface = Some(map.next_value::<Cow<'_, str>>()?),
+                        "server" => server = Some(map.next_value::<&str>()?),
+                        "interface" => interface_name = Some(map.next_value::<String>()?),
                         _ => {}
                     }
                 }
@@ -249,7 +249,7 @@ impl<'de> Deserialize<'de> for IpSourceType {
                     },
                     #[cfg(any(target_os = "linux", target_os = "windows"))]
                     2 => Ok(IpSourceType::LocalIPv6(
-                        interface.map(|name| name.to_string()),
+                        interface_name.map(|name| Arc::new(name)),
                     )),
                     _ => Err(de::Error::custom(format!(
                         "不支持的 IP 来源方式：{}",
@@ -267,14 +267,14 @@ impl<'de> Deserialize<'de> for IpSourceType {
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct Account {
     /// Cloudflare 账号 API token
-    token: Arc<str>,
+    token: Arc<String>,
     /// Cloudflare 中需要刷新的域名列表
     domains: Vec<Domain>,
 }
 
 impl Account {
     /// 获取 Cloudflare 账号 token
-    pub fn token(&self) -> &Arc<str> {
+    pub fn token(&self) -> &Arc<String> {
         &self.token
     }
 
@@ -306,11 +306,11 @@ pub struct Domain {
     /// 若未配置该项，则会使用 [`Configuration`] 中 `ip_source` 属性。
     ip_source: Option<IpSourceType>,
     /// 域名昵称，用于输出日志
-    nickname: Arc<str>,
+    nickname: Arc<String>,
     /// 域名 Cloudflare id
-    id: Arc<str>,
+    id: Arc<String>,
     /// 域名 Cloudflare zone id
-    zone_id: Arc<str>,
+    zone_id: Arc<String>,
 }
 
 impl Domain {
@@ -325,17 +325,17 @@ impl Domain {
     }
 
     /// 获取域名昵称，用于输出日志
-    pub fn nickname(&self) -> &Arc<str> {
+    pub fn nickname(&self) -> &Arc<String> {
         &self.nickname
     }
 
     /// 获取域名 Cloudflare id
-    pub fn id(&self) -> &Arc<str> {
+    pub fn id(&self) -> &Arc<String> {
         &self.id
     }
 
     /// 获取域名 Cloudflare zone id
-    pub fn zone_id(&self) -> &Arc<str> {
+    pub fn zone_id(&self) -> &Arc<String> {
         &self.zone_id
     }
 

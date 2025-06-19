@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    net::{IpAddr, Ipv6Addr},
+    net::{IpAddr, Ipv6Addr}, sync::Arc,
 };
 
 use async_trait::async_trait;
@@ -30,10 +30,10 @@ use super::IpSource;
 ///
 /// 将会使用首个非本地、非回环地址、非多播、非未指定的地址
 #[derive(Debug)]
-pub struct LocalIPv6(Option<Cow<'static, str>>);
+pub struct LocalIPv6(Option<Arc<String>>);
 
 impl LocalIPv6 {
-    pub fn new(interface_name: Option<Cow<'static, str>>) -> Self {
+    pub fn new(interface_name: Option<Arc<String>>) -> Self {
         Self(interface_name)
     }
 
