@@ -24,7 +24,7 @@ impl Standalone {
         })
     }
 
-    async fn send<T>(&self) -> Result<T, Error>
+    async fn request<T>(&self) -> Result<T, Error>
     where
         T: FromStr,
     {
@@ -62,7 +62,7 @@ impl Standalone {
 #[async_trait]
 impl IpSource for Standalone {
     async fn ip(&self) -> Result<IpAddr, Error> {
-        self.send().await
+        self.request().await
     }
 
     fn name(&self) -> &'static str {
