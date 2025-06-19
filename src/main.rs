@@ -153,9 +153,8 @@ fn listen_ctrl_c(termination_tx: Sender<()>) {
         send_terminate(termination_tx).unwrap();
     });
 }
-
+#[cfg(target_os = "linux")]
 fn listen_signal(termination_tx: Sender<()>) {
-    #[cfg(target_os = "linux")]
     tokio::spawn(async move {
         let mut stream =
             signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
@@ -213,6 +212,7 @@ fn start() -> Result<(), Error> {
         let main = async move {
             let (termination_tx, mut termination_rx) = broadcast::channel::<()>(1);
             listen_ctrl_c(termination_tx.clone());
+            #[cfg(target_os = "linux")]
             listen_signal(termination_tx.clone());
 
             // 初始化
