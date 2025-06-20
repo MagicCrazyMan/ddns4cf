@@ -240,6 +240,7 @@ fn start() -> Result<(), Error> {
 
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
+                .worker_threads(updater_len + 1) // +1 for the works except updaters
                 .build()
                 .unwrap()
                 .block_on(main);
