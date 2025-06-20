@@ -12,7 +12,7 @@ json5 = "0.4.1"
 clap = "2.34.0"
 serde = { version = "1.0.132", features = ["derive", "rc"] }
 scraper = "0.12.0"
-reqwest = { version = "0.12.16", default-features = false, features = ["deflate", "charset", "http2", "system-proxy", "rustls-tls", "socks"] }
+reqwest = { version = "0.12.16", default-features = false, features = ["zstd", "charset", "http2", "system-proxy", "rustls-tls", "socks"] }
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4.19"
 log = { version = "0.4.17" }
