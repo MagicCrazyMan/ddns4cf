@@ -450,7 +450,7 @@ const DEFAULT_CONFIGURATION_NAME: &'static str = "config.json5";
 /// 获取配置数据
 pub fn configuration() -> Result<Configuration, Error> {
     let matches = args::arguments();
-    match matches.value_of("config") {
+    match matches.get_one::<String>("config") {
         Some(value) => read_configuration(value),
         None => read_configuration(
             env::current_exe()
