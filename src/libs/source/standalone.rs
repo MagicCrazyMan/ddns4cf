@@ -20,6 +20,7 @@ impl Standalone {
             url,
             client: reqwest::ClientBuilder::new()
                 .local_address(bind_address)
+                .no_proxy()
                 .build()?,
         })
     }
