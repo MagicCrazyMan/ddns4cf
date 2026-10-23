@@ -16,7 +16,7 @@ reqwest = { version = "0.12.16", default-features = false, features = ["zstd", "
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4.19"
 log = { version = "0.4.17" }
-fern = { version = "0.6.1" }
+fern = { version = "0.7.1" }
 async-trait = "0.1.58"
 futures = "0.3.25"
 regex = "1.9.5"
