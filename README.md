@@ -4,6 +4,33 @@
 
 该程序功能比较简单，当前仅支持更新 IP 的功能。（IPv4 可用，IPv6 未经测试，理论上可行）
 
+# Docker
+
+在宿主机使用 musl 静态编译后构建镜像。运行时镜像固定使用 `debian:13` 作为基底；构建脚本会识别 `x86_64` 和 `aarch64` 宿主机架构，选择对应的 Rust musl target。若未安装 musl 工具链，脚本会提示安装命令。
+
+```bash
+chmod +x docker/build-image.sh
+docker/build-image.sh
+```
+
+镜像会同时标记为 `ddns4f:<Cargo.toml 中的 version>` 和 `ddns4f:latest`。
+
+配置文件通过挂载提供，容器会读取 `/config/config.json5`：
+
+```bash
+docker run -d --name ddns4cf \
+  --restart unless-stopped \
+  -v "$(pwd)/config.json5:/config/config.json5:ro" \
+  ddns4f:0.3.19
+```
+
+也可使用 Compose 模板。将配置文件放在 `docker/config.json5` 后执行：
+
+```bash
+cd docker
+docker compose up -d
+```
+
 # 配置
 
 支持从外部文件读取配置信息(`-c` 参数)，格式要求为 `json` 或 `json5`。配置详情如下：

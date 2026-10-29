@@ -1,0 +1,7 @@
+services:
+  ddns4cf:
+    image: ddns4f:latest
+    container_name: ddns4cf
+    restart: unless-stopped
+    volumes:
+      - ./config.json5:/config/config.json5:ro
