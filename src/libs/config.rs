@@ -445,7 +445,7 @@ impl<'de> Deserialize<'de> for Proxy {
 //     }
 // }
 
-const DEFAULT_CONFIGURATION_NAME: &'static str = "config.json5";
+const DEFAULT_CONFIGURATION_NAME: &'static str = "config.toml";
 
 /// 获取配置数据
 pub fn configuration() -> Result<Configuration, Error> {
@@ -460,13 +460,13 @@ pub fn configuration() -> Result<Configuration, Error> {
     }
 }
 
-/// 从文件路径读取配置，并通过 `json5` 解析。
+/// 从文件路径读取配置，并通过 `toml` 解析。
 fn read_configuration<P>(path: P) -> Result<Configuration, Error>
 where
     P: AsRef<Path>,
 {
     let text = fs::read_to_string(path.as_ref())
         .or_else(|err| Err(Error::read_configuration_failure(err, path.as_ref())))?;
-    Ok(json5::from_str(text.as_str())
+    Ok(toml::from_str(text.as_str())
         .or_else(|err| Err(Error::read_configuration_failure(err, path.as_ref())))?)
 }

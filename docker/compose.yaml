@@ -4,4 +4,4 @@ services:
     container_name: ddns4cf
     restart: unless-stopped
     volumes:
-      - ./config.json5:/config/config.json5:ro
+      - ./config.toml:/config/config.toml:ro

@@ -2,5 +2,8 @@
 
 /.vscode
 
-*.json5
 *.log
+
+# 本地真实配置（含 Cloudflare token），不要提交
+/config.toml
+/docker/config.toml
