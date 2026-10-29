@@ -31,6 +31,19 @@ cd docker
 docker compose up -d
 ```
 
+## GitHub Actions
+
+推送以 `v` 开头的标签（例如 `v0.3.19`）会触发 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)：分别构建 `linux/amd64` 和 `linux/arm64` 静态镜像，合并为多架构镜像后发布到 GHCR。arm64 构建使用 GitHub 托管的 `ubuntu-24.04-arm` runner。
+
+发布标签：
+
+- `ghcr.io/<owner>/ddns4f:<去掉 v 的标签>`
+- `ghcr.io/<owner>/ddns4f:latest`
+
+```bash
+docker pull ghcr.io/<owner>/ddns4f:latest
+```
+
 # 配置
 
 配置文件使用 `toml` 格式，可通过 `-c/--config` 参数指定路径；未指定时读取可执行文件同目录下的 `config.toml`。
