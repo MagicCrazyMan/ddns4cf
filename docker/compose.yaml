@@ -3,5 +3,6 @@ services:
     image: ghcr.io/magiccrazyman/ddns4f:latest
     container_name: ddns4cf
     restart: unless-stopped
+    network_mode: host
     volumes:
       - ./config.toml:/config/config.toml:ro
