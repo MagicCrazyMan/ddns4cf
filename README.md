@@ -24,7 +24,7 @@ docker run -d --name ddns4cf \
   ddns4f:0.3.19
 ```
 
-也可使用 Compose 模板。将配置文件放在 `docker/config.toml` 后执行：
+也可使用 Compose 模板（默认使用 GHCR 的 `latest` 镜像）。将配置文件放在 `docker/config.toml` 后执行：
 
 ```bash
 cd docker
